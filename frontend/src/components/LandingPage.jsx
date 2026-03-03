@@ -77,9 +77,22 @@ export default function LandingPage({ onStart, onlineCount }) {
                     ))}
                 </div>
 
-                <p className="text-[#2a2a2a] text-xs">
-                    Powered by WebRTC · Socket.IO · React
-                </p>
+                <div className="flex flex-col items-center gap-2 mt-4">
+                    <p className="text-[#2a2a2a] text-xs font-medium">
+                        Powered by WebRTC · Socket.IO · React
+                    </p>
+                    <p className="text-[#6b7280] text-xs">
+                        Built with <span className="text-red-500">♥</span> by{" "}
+                        <a
+                            href="https://github.com/goelsahhab"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:text-blue-400 font-medium transition-colors"
+                        >
+                            @goelsahhab
+                        </a>
+                    </p>
+                </div>
             </div>
         </div>
     )

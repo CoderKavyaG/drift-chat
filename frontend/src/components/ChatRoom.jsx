@@ -207,43 +207,63 @@ export default function ChatRoom({ onStop, onlineCount }) {
                 </div>
             </div>
 
-            {showSkipOverlay && (
-                <div className="absolute inset-0 bg-[#0a0a0a]/85 flex items-center justify-center z-50 backdrop-blur-sm">
-                    <div className="flex flex-col items-center gap-3">
-                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                        <p className="text-white text-sm font-medium">Finding next stranger…</p>
-                    </div>
-                </div>
-            )}
+            <footer className="shrink-0 py-2 border-t border-[#1a1a1a] flex justify-center">
+                <p className="text-[#6b7280] text-xs">
+                    Built with <span className="text-red-500">♥</span> by{" "}
+                    <a
+                        href="https://github.com/goelsahhab"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-500 hover:text-blue-400 font-medium transition-colors"
+                    >
+                        @goelsahhab
+                    </a>
+                </p>
+            </footer>
 
-            {partnerLeft && appState === "waiting" && (
-                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40">
-                    <div className="flex items-center gap-3 px-4 py-3 bg-[#111111] border border-[#2a2a2a] rounded-xl shadow-2xl">
-                        <span className="text-sm text-[#e5e7eb]">Stranger has left</span>
-                        <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                                setPartnerLeft(false)
-                                emit("find_partner")
-                            }}
-                            className="h-7 text-xs gap-1.5"
-                        >
-                            <SkipForward className="w-3 h-3" />
-                            Find new
-                        </Button>
+            {
+                showSkipOverlay && (
+                    <div className="absolute inset-0 bg-[#0a0a0a]/85 flex items-center justify-center z-50 backdrop-blur-sm">
+                        <div className="flex flex-col items-center gap-3">
+                            <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                            <p className="text-white text-sm font-medium">Finding next stranger…</p>
+                        </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-            {showSettings && (
-                <MediaSettings
-                    localStream={localStream}
-                    isMuted={isMuted}
-                    isCamOff={isCamOff}
-                    onClose={() => setShowSettings(false)}
-                />
-            )}
-        </div>
+            {
+                partnerLeft && appState === "waiting" && (
+                    <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-40">
+                        <div className="flex items-center gap-3 px-4 py-3 bg-[#111111] border border-[#2a2a2a] rounded-xl shadow-2xl">
+                            <span className="text-sm text-[#e5e7eb]">Stranger has left</span>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                    setPartnerLeft(false)
+                                    emit("find_partner")
+                                }}
+                                className="h-7 text-xs gap-1.5"
+                            >
+                                <SkipForward className="w-3 h-3" />
+                                Find new
+                            </Button>
+                        </div>
+                    </div>
+                )
+            }
+
+            {
+                showSettings && (
+                    <MediaSettings
+                        localStream={localStream}
+                        isMuted={isMuted}
+                        isCamOff={isCamOff}
+                        onClose={() => setShowSettings(false)}
+                    />
+                )
+            }
+        </div >
     )
 }

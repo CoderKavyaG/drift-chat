@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge"
-import { Wifi, WifiOff, Loader2, CheckCircle2 } from "lucide-react"
+import { Wifi, WifiOff, Loader2, CheckCircle2, Github } from "lucide-react"
 
 export default function StatusBar({ status, partnerLeft, waitingTooLong }) {
     if (partnerLeft) {
@@ -38,5 +38,20 @@ export default function StatusBar({ status, partnerLeft, waitingTooLong }) {
         ),
     }
 
-    return map[status] || map.idle
+    const badge = map[status] || map.idle
+
+    return (
+        <div className="flex items-center gap-3">
+            {badge}
+            <a
+                href="https://github.com/goelsahhab"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#6b7280] hover:text-[#e5e7eb] transition-colors"
+                title="@goelsahhab on GitHub"
+            >
+                <Github className="w-4 h-4" />
+            </a>
+        </div>
+    )
 }
