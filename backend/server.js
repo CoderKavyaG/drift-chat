@@ -9,18 +9,14 @@ const app = express();
 const server = http.createServer(app);
 
 const PORT = process.env.PORT || 3001;
-const ALLOWED_ORIGINS = [
-  process.env.CLIENT_URL || "http://localhost:5173",
-  "http://localhost:5173",
-  "http://localhost:5174",
-];
 
-app.use(cors({ origin: ALLOWED_ORIGINS }));
+// Allow all origins since this is a public anonymous chat without session cookies
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 const io = new Server(server, {
   cors: {
-    origin: ALLOWED_ORIGINS,
+    origin: "*",
     methods: ["GET", "POST"],
   },
 });
