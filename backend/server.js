@@ -9,14 +9,18 @@ const app = express();
 const server = http.createServer(app);
 
 const PORT = process.env.PORT || 3001;
-const CLIENT_URL = process.env.CLIENT_URL || "http://localhost:5173";
+const ALLOWED_ORIGINS = [
+  process.env.CLIENT_URL || "http://localhost:5173",
+  "http://localhost:5173",
+  "http://localhost:5174",
+];
 
-app.use(cors({ origin: CLIENT_URL }));
+app.use(cors({ origin: ALLOWED_ORIGINS }));
 app.use(express.json());
 
 const io = new Server(server, {
   cors: {
-    origin: CLIENT_URL,
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"],
   },
 });
