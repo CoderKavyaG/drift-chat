@@ -197,21 +197,21 @@ export default function ChatRoom({ onStop, onlineCount }) {
             <GlowBackground />
 
             {/* Header */}
-            <header className="flex items-center justify-between px-8 py-6 z-20 shrink-0 border-b border-white/5 bg-black/20 backdrop-blur-xl">
-                <div className="flex items-center gap-6">
-                    <span className="text-[20px] font-extrabold tracking-[-0.04em] bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent select-none">
+            <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-6 z-20 shrink-0 border-b border-white/5 bg-black/20 backdrop-blur-xl">
+                <div className="flex items-center gap-3 sm:gap-6 min-w-0">
+                    <span className="text-[17px] sm:text-[20px] font-extrabold tracking-[-0.04em] bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent select-none shrink-0">
                         drift<span className="text-indigo-400">.</span>
                     </span>
-                    <div className="w-px h-6 bg-white/10" />
+                    <div className="w-px h-5 sm:h-6 bg-white/10 shrink-0" />
                     <StatusBar status={statusText} partnerLeft={partnerLeft} waitingTooLong={waitingTooLong} />
                 </div>
 
-                <div className="flex items-center gap-6">
-                    <Badge variant="outline" className="glass-dark px-4 py-1.5 border-white/5 text-white/40 font-medium hidden md:flex gap-2">
+                <div className="flex items-center gap-3 sm:gap-6 shrink-0">
+                    <Badge variant="outline" className="glass-dark px-3 sm:px-4 py-1 sm:py-1.5 border-white/5 text-white/40 font-medium hidden sm:flex gap-2 text-[11px] sm:text-xs">
                         <Users className="w-3 h-3" />
                         {onlineCount} active
                     </Badge>
-                    <a href="https://github.com/CoderKavyaG/Stranger-Chat" target="_blank" rel="noreferrer" className="text-white/30 hover:text-white transition-colors">
+                    <a href="https://github.com/CoderKavyaG/Stranger-Chat" target="_blank" rel="noreferrer" className="text-white/30 hover:text-white transition-colors hidden sm:block">
                         <Github className="w-5 h-5" />
                     </a>
                 </div>
@@ -221,7 +221,7 @@ export default function ChatRoom({ onStop, onlineCount }) {
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="mx-8 mt-4 px-6 py-4 glass-dark border-red-500/20 text-red-400 text-sm rounded-2xl flex items-center justify-between z-20"
+                    className="mx-3 sm:mx-8 mt-2 sm:mt-4 px-4 sm:px-6 py-3 sm:py-4 glass-dark border-red-500/20 text-red-400 text-xs sm:text-sm rounded-xl sm:rounded-2xl flex items-center justify-between z-20"
                 >
                     <div className="flex items-center gap-3">
                         <AlertTriangle className="w-5 h-5" />
@@ -231,9 +231,9 @@ export default function ChatRoom({ onStop, onlineCount }) {
                 </motion.div>
             )}
 
-            <main className="flex-1 flex flex-col xl:flex-row gap-6 p-8 min-h-0 overflow-hidden z-10">
-                <div className="flex flex-col gap-6 flex-1 min-h-0">
-                    <div className="flex-1 min-h-0 rounded-[32px] overflow-hidden shadow-2xl">
+            <main className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-6 p-3 sm:p-8 min-h-0 overflow-auto sm:overflow-hidden z-10">
+                <div className="flex flex-col gap-3 sm:gap-6 flex-1 min-h-0">
+                    <div className="flex-1 min-h-[200px] sm:min-h-0 rounded-2xl sm:rounded-[32px] overflow-hidden shadow-2xl">
                         <VideoPanel
                             localStream={localStream}
                             remoteStream={remoteStream}
@@ -255,7 +255,7 @@ export default function ChatRoom({ onStop, onlineCount }) {
                     />
                 </div>
 
-                <div className="flex flex-col w-full xl:w-[400px] min-h-[300px] xl:h-auto shrink-0">
+                <div className="flex flex-col w-full lg:w-[380px] min-h-[250px] sm:min-h-[300px] lg:h-auto shrink-0">
                     <ChatPanel
                         messages={messages}
                         onSend={sendMessage}

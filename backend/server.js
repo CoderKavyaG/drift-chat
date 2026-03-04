@@ -168,6 +168,6 @@ app.get("/health", (req, res) => {
 });
 
 // ─── Start Server ─────────────────────────────────────────────────────────────
-server.listen(PORT, () => {
-  console.log(`\n🚀 StrangerChat backend running on http://localhost:${PORT}\n`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`\n🚀 drift backend running on http://0.0.0.0:${PORT}\n`);
 });
