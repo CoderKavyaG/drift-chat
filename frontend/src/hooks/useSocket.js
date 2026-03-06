@@ -28,16 +28,25 @@ export function useSocket(eventHandlers = {}) {
     handlersRef.current = eventHandlers;
 
     useEffect(() => {
-        const entries = Object.entries(handlersRef.current);
-        entries.forEach(([event, handler]) => {
-            socket.on(event, handler);
+        // Create a persistent wrapper for each event to avoid stale closures
+        const wrappedHandlers = {};
+        const eventNames = Object.keys(handlersRef.current);
+
+        eventNames.forEach((event) => {
+            wrappedHandlers[event] = (...args) => {
+                if (handlersRef.current[event]) {
+                    handlersRef.current[event](...args);
+                }
+            };
+            socket.on(event, wrappedHandlers[event]);
         });
+
         return () => {
-            entries.forEach(([event, handler]) => {
-                socket.off(event, handler);
+            eventNames.forEach((event) => {
+                socket.off(event, wrappedHandlers[event]);
             });
         };
-    }, []); // only run once; handlersRef keeps handlers fresh
+    }, []); // Hook stays alive as long as component mounts; handlersRef keeps handlers fresh
 
     const emit = useCallback(
         (event, data) => {

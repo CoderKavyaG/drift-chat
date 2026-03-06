@@ -56,6 +56,8 @@ export default function ChatRoom({ onStop, onlineCount }) {
         setStatusText("connected")
         setPartnerLeft(false)
         setWaitingTooLong(false)
+        setRemoteStream(null)
+        setWebrtcError(null)
         clearMessages()
     }, [clearMessages])
 
@@ -108,30 +110,35 @@ export default function ChatRoom({ onStop, onlineCount }) {
     const fetchMedia = useCallback(async (aId, vId) => {
         try {
             const constraints = {
-                video: vId ? { deviceId: { exact: vId }, width: 1280, height: 720 } : { width: 1280, height: 720 },
+                video: vId
+                    ? { deviceId: { exact: vId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                    : { width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: aId ? { deviceId: { exact: aId } } : true,
             }
+            console.log("[Media] Requesting stream with constraints:", constraints)
             const stream = await navigator.mediaDevices.getUserMedia(constraints)
 
-            // Stop old tracks
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop())
-            }
+            // Stop old tracks - use a ref or capture current localStream to be safe
+            setLocalStream(prevStream => {
+                if (prevStream) {
+                    prevStream.getTracks().forEach(t => t.stop())
+                }
+                return stream
+            })
 
             stream.getAudioTracks().forEach(t => t.enabled = !isMuted)
             stream.getVideoTracks().forEach(t => t.enabled = !isCamOff)
 
-            setLocalStream(stream)
             setMediaError(null)
         } catch (err) {
             console.error("Media Error:", err)
             setMediaError(
                 err.name === "NotAllowedError"
                     ? "Camera/mic permissions were denied. You can still use text chat."
-                    : "We couldn't access your camera. Text chat is still available."
+                    : "We couldn't access your camera at the requested resolution. Try refreshing or check device settings."
             )
         }
-    }, [localStream, isMuted, isCamOff])
+    }, [isMuted, isCamOff])
 
     // Initial media fetch
     useEffect(() => {
