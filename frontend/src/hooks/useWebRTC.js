@@ -10,103 +10,101 @@ const getIceServers = () => {
 
     const username = import.meta.env.VITE_TURN_USERNAME;
     const credential = import.meta.env.VITE_TURN_CREDENTIAL;
-
-    // Add TURN servers only if we have full credentials
     const turnUrl = import.meta.env.VITE_TURN_URL;
-    if (turnUrl && username && credential) {
-        servers.push({
-            urls: turnUrl,
-            username: username,
-            credential: credential,
-        });
-    } else if (turnUrl) {
-        console.warn("[WebRTC] VITE_TURN_URL detected but Username/Credential missing.");
-    }
-
     const turnUrl2 = import.meta.env.VITE_TURN_URL_2;
+
+    if (turnUrl && username && credential) {
+        servers.push({ urls: turnUrl, username, credential });
+    }
     if (turnUrl2 && username && credential) {
-        servers.push({
-            urls: turnUrl2,
-            username: username,
-            credential: credential,
-        });
+        servers.push({ urls: turnUrl2, username, credential });
     }
 
-    console.log(`[WebRTC] ICE Servers configured: ${servers.length} servers active`);
+    console.log(`[WebRTC] ICE Servers: ${servers.length} configured`);
     return { iceServers: servers };
 };
 
-/**
- * useWebRTC hook
- * Manages the entire WebRTC peer lifecycle via simple-peer.
- *
- * @param {object} params
- * @param {string|null} params.roomId       - Current room ID (null when not matched)
- * @param {boolean}     params.isInitiator  - Whether this peer creates the offer
- * @param {MediaStream|null} params.localStream - Local camera+mic stream
- * @param {function}    params.onRemoteStream - Called with remote MediaStream
- * @param {function}    params.onError       - Called with error string
- */
 export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, onError }) {
     const peerRef = useRef(null);
     const streamRef = useRef(localStream);
-    const signalBuffer = useRef([]); // Store signals that arrive before peer is ready
+    const signalBuffer = useRef([]);
     const socket = getSocket();
+    const currentRoomId = useRef(null);
 
     const destroyPeer = useCallback(() => {
         if (peerRef.current) {
+            console.log("[WebRTC] Destroying peer...");
             peerRef.current.destroy();
             peerRef.current = null;
         }
-        signalBuffer.current = []; // Clear buffer
+        signalBuffer.current = [];
+        currentRoomId.current = null;
     }, []);
 
-    // ── Update localStream to existing peer ───────────────────────────────────
+    // ── Update Tracks ──────────────────────────────────────────────────────────
     useEffect(() => {
-        if (peerRef.current && !peerRef.current.destroyed && localStream && streamRef.current !== localStream) {
+        if (!peerRef.current || peerRef.current.destroyed || !localStream) {
+            streamRef.current = localStream;
+            return;
+        }
+
+        if (streamRef.current !== localStream) {
+            console.log("[WebRTC] localStream changed, updating tracks");
             if (!streamRef.current) {
+                // First time adding stream
                 try {
                     peerRef.current.addStream(localStream);
-                    console.log("[WebRTC] Stream added to existing peer");
                 } catch (e) {
-                    console.error("[WebRTC] Failed to add stream", e);
+                    console.error("[WebRTC] addStream failed:", e);
                 }
             } else {
-                // Replace or add individual tracks
-                localStream.getTracks().forEach(newTrack => {
-                    const oldTrack = streamRef.current.getTracks().find(t => t.kind === newTrack.kind)
+                // Replace existing tracks
+                const oldTracks = streamRef.current.getTracks();
+                const newTracks = localStream.getTracks();
+
+                newTracks.forEach(newTrack => {
+                    const oldTrack = oldTracks.find(t => t.kind === newTrack.kind);
                     if (oldTrack) {
                         try {
                             peerRef.current.replaceTrack(oldTrack, newTrack, streamRef.current);
                         } catch (e) {
-                            console.error("[WebRTC] Failed to replace track", e);
+                            console.warn("[WebRTC] replaceTrack failed:", e.message);
+                            // Fallback to addTrack if replace fails
+                            try { peerRef.current.addTrack(newTrack, localStream); } catch (err) {}
                         }
                     } else {
                         try {
                             peerRef.current.addTrack(newTrack, localStream);
                         } catch (e) {
-                            console.error("[WebRTC] Failed to add track", e);
+                            console.error("[WebRTC] addTrack failed:", e);
                         }
                     }
-                })
+                });
             }
-            streamRef.current = localStream;
-        } else if (!peerRef.current) {
             streamRef.current = localStream;
         }
     }, [localStream]);
 
-    // ── Peer creation & Signal listener ──────────────────────────────────────────
+    // ── Peer Lifecycle ──────────────────────────────────────────────────────────
     useEffect(() => {
-        if (!roomId) return;
-        destroyPeer();
+        if (!roomId) {
+            destroyPeer();
+            return;
+        }
 
-        let mounted = true;
+        // Avoid re-initializing if roomId hasn't changed (React 18 StrictMode fix)
+        if (currentRoomId.current === roomId && peerRef.current) {
+            return;
+        }
+
+        console.log(`[WebRTC] Initializing peer for room: ${roomId}, initiator: ${isInitiator}`);
+        destroyPeer();
+        currentRoomId.current = roomId;
 
         try {
             const peer = new SimplePeer({
                 initiator: isInitiator,
-                stream: streamRef.current,
+                stream: streamRef.current || undefined,
                 trickle: true,
                 config: getIceServers(),
                 offerOptions: {
@@ -116,60 +114,61 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
             });
 
             peer.on("signal", (signal) => {
-                if (!mounted) return;
                 socket.emit("webrtc_signal", { roomId, signal });
             });
 
             peer.on("stream", (remoteStream) => {
-                if (!mounted) return;
+                console.log("[WebRTC] Received remote stream");
                 onRemoteStream(remoteStream);
             });
 
             peer.on("connect", () => {
-                console.log("[WebRTC] Connection established");
+                console.log("[WebRTC] Peer connection established");
             });
 
             peer.on("error", (err) => {
-                if (!mounted) return;
-                console.error("[WebRTC] Peer error:", err.message);
-                onError("WebRTC connection failed. Video transfer may be affected.");
+                console.error("[WebRTC] Peer error:", err);
+                onError("Connection failed. Video/audio may be unavailable.");
             });
 
             peerRef.current = peer;
 
-            // Immediately process any buffered signals
+            // Process any signals that arrived before peer was ready
             if (signalBuffer.current.length > 0) {
                 console.log(`[WebRTC] Processing ${signalBuffer.current.length} buffered signals`);
-                signalBuffer.current.forEach(sig => peer.signal(sig));
+                signalBuffer.current.forEach(sig => {
+                    try { peer.signal(sig); } catch (e) { console.warn("[WebRTC] Signal failed:", e.message); }
+                });
                 signalBuffer.current = [];
             }
         } catch (err) {
-            console.error("[WebRTC] Failed to create peer:", err);
+            console.error("[WebRTC] Peer creation failed:", err);
             onError("WebRTC setup failed.");
         }
 
-        const handleIncomingSignal = ({ signal }) => {
+        const handleSignal = ({ signal, roomId: incomingRoomId }) => {
+            // If the signal is for our current room (or if room matching isn't sent, assume current)
             if (peerRef.current && !peerRef.current.destroyed) {
                 try {
                     peerRef.current.signal(signal);
-                } catch (err) {
-                    console.warn("[WebRTC] Error signaling:", err.message);
+                } catch (e) {
+                    console.warn("[WebRTC] Error signaling:", e.message);
                 }
             } else {
-                // Buffer the signal if the peer isn't ready but is about to be (we have a roomId)
-                console.log("[WebRTC] Buffering signal; peer not ready");
+                console.log("[WebRTC] Buffering incoming signal");
                 signalBuffer.current.push(signal);
             }
         };
 
-        socket.on("webrtc_signal", handleIncomingSignal);
+        socket.on("webrtc_signal", handleSignal);
 
         return () => {
-            mounted = false;
-            socket.off("webrtc_signal", handleIncomingSignal);
-            destroyPeer();
+            // Note: We don't destroyPeer() here because we want it to persist across re-renders 
+            // of the same room. destroyPeer() is called when roomId changes or becomes null.
+            socket.off("webrtc_signal", handleSignal);
         };
     }, [roomId, isInitiator, socket, onRemoteStream, onError, destroyPeer]);
 
     return { destroyPeer };
 }
+

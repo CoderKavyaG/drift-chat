@@ -120,18 +120,28 @@ io.on("connection", (socket) => {
   // ── webrtc_signal: relay WebRTC signaling data between peers ─────────────
   socket.on("webrtc_signal", ({ roomId, signal }) => {
     const room = activeRooms.get(roomId);
-    if (!room) return;
+    if (!room) {
+      console.warn(`[SIGNAL] Received signal for non-existent room: ${roomId}`);
+      return;
+    }
 
     const partnerId = room.sockets.find((id) => id !== socket.id);
     if (partnerId) {
-      io.to(partnerId).emit("webrtc_signal", { signal, from: socket.id });
+      io.to(partnerId).emit("webrtc_signal", { 
+        signal, 
+        roomId, // Include roomId for client-side validation
+        from: socket.id 
+      });
     }
   });
 
   // ── send_message: relay chat message to partner ───────────────────────────
   socket.on("send_message", ({ roomId, message, timestamp }) => {
     const room = activeRooms.get(roomId);
-    if (!room) return;
+    if (!room) {
+      console.warn(`[CHAT] Message for non-existent room: ${roomId}`);
+      return;
+    }
 
     const partnerId = room.sockets.find((id) => id !== socket.id);
     if (partnerId) {
