@@ -50,8 +50,6 @@ export default function ChatRoom({ onStop, onlineCount }) {
     // Socket event handlers — use refs to avoid forward-reference issues
     const handleMatched = useCallback(({ roomId: rId, initiator }) => {
         clearWaitingTimer()
-        setRoomId(rId)
-        setIsInitiator(initiator)
         setAppState("chatting")
         setStatusText("connected")
         setPartnerLeft(false)
@@ -59,7 +57,21 @@ export default function ChatRoom({ onStop, onlineCount }) {
         setRemoteStream(null)
         setWebrtcError(null)
         clearMessages()
-    }, [clearMessages])
+        
+        // Ensure fresh stream before creating peer connection
+        if (localStream) {
+            localStream.getTracks().forEach(t => t.stop())
+        }
+        setLocalStream(null)
+        
+        // Fetch fresh media, then when done, set roomId to trigger peer creation
+        fetchMedia(null, null).then(() => {
+            setRoomId(rId)
+            setIsInitiator(initiator)
+        }).catch(err => {
+            console.error("[ChatRoom] Media fetch failed:", err)
+        })
+    }, [clearMessages, localStream, fetchMedia])
 
     const handlePartnerLeft = useCallback(() => {
         // Auto-reconnect: clean up and immediately find new partner
