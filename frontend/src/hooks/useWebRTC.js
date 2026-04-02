@@ -62,12 +62,21 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
             const peer = peerRef.current;
             
             if (!streamRef.current && localStream) {
-                // First time attaching stream - add each track individually
+                // First time attaching stream - add only if connection not yet established
                 console.log("[WebRTC] Adding local stream tracks for first time");
                 const tracks = localStream.getTracks();
+                
+                // Check connection state - don't add if already connected (avoids renegotiation issues)
+                const connState = peer._pc?.connectionState;
+                if (connState === "connected" || connState === "completed") {
+                    console.warn(`[WebRTC] Connection already ${connState} - skipping track add`);
+                    streamRef.current = localStream;
+                    return;
+                }
+                
                 tracks.forEach((track) => {
                     try {
-                        console.log(`[WebRTC] Adding ${track.kind} track`);
+                        console.log(`[WebRTC] Adding ${track.kind} track (conn state: ${connState})`);
                         peer.addTrack(track, localStream);
                     } catch (e) {
                         console.error(`[WebRTC] addTrack(${track.kind}) failed:`, e);
