@@ -40,6 +40,9 @@ export default function ChatRoom({ onStop, onlineCount }) {
     const destroyPeerRef = useRef(null)
     const emitRef = useRef(null)
     const fetchMediaRef = useRef(null)
+    const clearMessagesRef = useRef(null)
+    const localStreamRef = useRef(null)
+    const receiveMessageRef = useRef(null)
 
     const clearWaitingTimer = () => {
         if (waitingTimerRef.current) {
@@ -57,11 +60,11 @@ export default function ChatRoom({ onStop, onlineCount }) {
         setWaitingTooLong(false)
         setRemoteStream(null)
         setWebrtcError(null)
-        clearMessages()
+        if (clearMessagesRef.current) clearMessagesRef.current()
         
         // Ensure fresh stream before creating peer connection
-        if (localStream) {
-            localStream.getTracks().forEach(t => t.stop())
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(t => t.stop())
         }
         setLocalStream(null)
         
@@ -74,7 +77,7 @@ export default function ChatRoom({ onStop, onlineCount }) {
                 console.error("[ChatRoom] Media fetch failed:", err)
             })
         }
-    }, [clearMessages, localStream])
+    }, [])
 
     const handlePartnerLeft = useCallback(() => {
         // Auto-reconnect: clean up and immediately find new partner
@@ -85,14 +88,14 @@ export default function ChatRoom({ onStop, onlineCount }) {
         setPartnerLeft(false)
         setAppState("waiting")
         setStatusText("waiting")
-        clearMessages()
+        if (clearMessagesRef.current) clearMessagesRef.current()
         if (emitRef.current) emitRef.current("leave_room")
         setShowSkipOverlay(true)
         setTimeout(() => {
             setShowSkipOverlay(false)
             if (emitRef.current) emitRef.current("find_partner")
         }, 800)
-    }, [clearMessages])
+    }, [])
 
     const handleWaiting = useCallback(() => {
         setStatusText("waiting")
@@ -106,7 +109,9 @@ export default function ChatRoom({ onStop, onlineCount }) {
         matched: handleMatched,
         partner_left: handlePartnerLeft,
         waiting: handleWaiting,
-        receive_message: useCallback((data) => receiveMessage(data), [receiveMessage]),
+        receive_message: (data) => {
+            if (receiveMessageRef.current) receiveMessageRef.current(data)
+        },
     })
 
     const { destroyPeer } = useWebRTC({
@@ -121,6 +126,9 @@ export default function ChatRoom({ onStop, onlineCount }) {
     useEffect(() => { destroyPeerRef.current = destroyPeer }, [destroyPeer])
     useEffect(() => { emitRef.current = emit }, [emit])
     useEffect(() => { fetchMediaRef.current = fetchMedia }, [fetchMedia])
+    useEffect(() => { clearMessagesRef.current = clearMessages }, [clearMessages])
+    useEffect(() => { localStreamRef.current = localStream }, [localStream])
+    useEffect(() => { receiveMessageRef.current = receiveMessage }, [receiveMessage])
 
     // Fetch media with specific device IDs
     const fetchMedia = useCallback(async (aId, vId) => {
