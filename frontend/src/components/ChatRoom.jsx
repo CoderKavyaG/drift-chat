@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Video, Users, Loader2, SkipForward, Github, X, AlertTriangle } from "lucide-react"
+import { Users, Github, X, AlertTriangle } from "lucide-react"
 import { useSocket } from "../hooks/useSocket"
 import { useWebRTC } from "../hooks/useWebRTC"
 import { useChat } from "../hooks/useChat"
@@ -111,8 +111,8 @@ export default function ChatRoom({ onStop, onlineCount }) {
         try {
             const constraints = {
                 video: vId
-                    ? { deviceId: { exact: vId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-                    : { width: { ideal: 1280 }, height: { ideal: 720 } },
+                    ? { deviceId: { exact: vId }, width: { ideal: 720 }, height: { ideal: 480 } }
+                    : { width: { ideal: 720 }, height: { ideal: 480 } },
                 audio: aId ? { deviceId: { exact: aId } } : true,
             }
             console.log("[Media] Requesting stream with constraints:", constraints)
@@ -155,18 +155,20 @@ export default function ChatRoom({ onStop, onlineCount }) {
 
     const handleMuteToggle = () => {
         if (!localStream) return
+        const newMutedState = !isMuted
         localStream.getAudioTracks().forEach(track => {
-            track.enabled = isMuted
+            track.enabled = !newMutedState  // Enable if NOT muted
         })
-        setIsMuted(!isMuted)
+        setIsMuted(newMutedState)
     }
 
     const handleCamToggle = () => {
         if (!localStream) return
+        const newCamOffState = !isCamOff
         localStream.getVideoTracks().forEach(track => {
-            track.enabled = isCamOff
+            track.enabled = !newCamOffState  // Enable if camera is NOT off
         })
-        setIsCamOff(!isCamOff)
+        setIsCamOff(newCamOffState)
     }
 
     const handleSkip = useCallback(() => {

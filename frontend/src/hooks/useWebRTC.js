@@ -120,16 +120,29 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
                 socket.emit("webrtc_signal", { roomId, signal });
             });
 
-            peer.on("stream", (remoteStream) => {
-                console.log("[WebRTC] Received remote stream:", remoteStream.id);
-                // Extra check to ensure audio is enabled
-                remoteStream.getAudioTracks().forEach(t => t.enabled = true);
-                onRemoteStream(remoteStream);
+            // Use track event (more reliable than stream event)
+            const remoteStreams = new Map();
+            peer.on("track", (track, stream) => {
+                console.log(`[WebRTC] Received remote track: ${track.kind} from stream ${stream.id}`);
+                // Collect all tracks from the same stream
+                if (!remoteStreams.has(stream.id)) {
+                    remoteStreams.set(stream.id, stream);
+                    // Enable audio tracks
+                    stream.getAudioTracks().forEach(t => t.enabled = true);
+                    // Only emit the first stream we receive
+                    if (remoteStreams.size === 1) {
+                        onRemoteStream(stream);
+                    }
+                }
             });
 
-            peer.on("track", (track, stream) => {
-                console.log(`[WebRTC] Received remote track: ${track.kind} (${track.id}) from stream ${stream.id}`);
-                onRemoteStream(stream);
+            // Fallback: Use stream event for compatibility (older browsers)
+            peer.on("stream", (remoteStream) => {
+                console.log("[WebRTC] Received remote stream:", remoteStream.id);
+                remoteStream.getAudioTracks().forEach(t => t.enabled = true);
+                if (remoteStreams.size === 0) {
+                    onRemoteStream(remoteStream);
+                }
             });
 
             peer.on("connect", () => {

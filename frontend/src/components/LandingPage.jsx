@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ArrowRight, ArrowRightCircle, Plus, Minus, ArrowUpRight, Sparkles, Send } from "lucide-react"
+import { ArrowRight, Plus, Minus, Sparkles, Send } from "lucide-react"
 import MascotCharacter from "./MascotCharacter"
 
 // Color scheme for Tailwind arbitrary values
