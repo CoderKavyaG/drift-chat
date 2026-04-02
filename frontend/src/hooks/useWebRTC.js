@@ -18,12 +18,18 @@ const getIceServers = () => {
 
     if (turnUrl && username && credential) {
         servers.push({ urls: turnUrl, username, credential });
+        console.log("[WebRTC] TURN Server 1 configured:", turnUrl);
+    } else {
+        console.warn("[WebRTC] TURN Server 1 NOT configured - missing credentials");
     }
+    
     if (turnUrl2 && username && credential) {
         servers.push({ urls: turnUrl2, username, credential });
+        console.log("[WebRTC] TURN Server 2 configured:", turnUrl2);
     }
 
-    console.log(`[WebRTC] ICE Servers: ${servers.length} configured`);
+    console.log(`[WebRTC] Total ICE Servers: ${servers.length}`);
+    servers.forEach((srv, i) => console.log(`  [${i}] ${srv.urls}`));
     return { iceServers: servers };
 };
 
@@ -151,7 +157,15 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
 
             peer.on("error", (err) => {
                 console.error("[WebRTC] Peer error:", err);
+                console.error("[WebRTC] Error details - Name:", err.name, "Message:", err.message);
+                if (err.message.includes("Connection")) {
+                    console.error("[WebRTC] Connection failed - likely TURN server or firewall issue");
+                }
                 onError("Connection failed. Video/audio may be unavailable.");
+            });
+
+            peer.on("connectionstatechange", (state) => {
+                console.log("[WebRTC] Connection state:", state);
             });
 
             peerRef.current = peer;
