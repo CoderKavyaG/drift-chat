@@ -62,12 +62,17 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
             const peer = peerRef.current;
             
             if (!streamRef.current && localStream) {
-                // First time attaching stream
-                try {
-                    peer.addStream(localStream);
-                } catch (e) {
-                    console.error("[WebRTC] first-time addStream failed:", e);
-                }
+                // First time attaching stream - add each track individually
+                console.log("[WebRTC] Adding local stream tracks for first time");
+                const tracks = localStream.getTracks();
+                tracks.forEach((track) => {
+                    try {
+                        console.log(`[WebRTC] Adding ${track.kind} track`);
+                        peer.addTrack(track, localStream);
+                    } catch (e) {
+                        console.error(`[WebRTC] addTrack(${track.kind}) failed:`, e);
+                    }
+                });
             } else if (streamRef.current && localStream) {
                 // Replace or add individual tracks
                 const newTracks = localStream.getTracks();
@@ -111,6 +116,7 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
         currentRoomId.current = roomId;
 
         try {
+            console.log(`[WebRTC] Stream status at peer creation - initiator: ${isInitiator}, hasStream: ${!!streamRef.current}`);
             const peer = new SimplePeer({
                 initiator: isInitiator,
                 stream: streamRef.current || undefined,
@@ -120,9 +126,19 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
                     offerToReceiveAudio: true,
                     offerToReceiveVideo: true,
                 },
+                answerOptions: {
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: true,
+                },
             });
 
             peer.on("signal", (signal) => {
+                console.log(`[WebRTC] Sending signal (${signal.type})`);
+                if (signal.type === "offer" || signal.type === "answer") {
+                    const hasAudio = signal.sdp?.includes("m=audio");
+                    const hasVideo = signal.sdp?.includes("m=video");
+                    console.log(`[WebRTC] ${signal.type} SDP includes - audio: ${hasAudio}, video: ${hasVideo}`);
+                }
                 socket.emit("webrtc_signal", { roomId, signal });
             });
 
