@@ -126,6 +126,16 @@ export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, on
 
         try {
             console.log(`[WebRTC] Stream status at peer creation - initiator: ${isInitiator}, hasStream: ${!!streamRef.current}`);
+            
+            // Log local stream tracks
+            if (streamRef.current) {
+                const audioTracks = streamRef.current.getAudioTracks();
+                const videoTracks = streamRef.current.getVideoTracks();
+                console.log(`[WebRTC] Local stream tracks - audio: ${audioTracks.length}, video: ${videoTracks.length}`);
+                audioTracks.forEach((t, i) => console.log(`  Audio track ${i}: enabled=${t.enabled}`));
+                videoTracks.forEach((t, i) => console.log(`  Video track ${i}: enabled=${t.enabled}`));
+            }
+            
             const peer = new SimplePeer({
                 initiator: isInitiator,
                 stream: streamRef.current || undefined,

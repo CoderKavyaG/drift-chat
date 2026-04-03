@@ -70,8 +70,10 @@ export default function ChatRoom({ onStop, onlineCount }) {
                 return stream
             })
 
-            stream.getAudioTracks().forEach(t => t.enabled = !isMuted)
-            stream.getVideoTracks().forEach(t => t.enabled = !isCamOff)
+            // Always enable tracks initially - they should be available for WebRTC
+            // Muting/camera off is handled separately by the user controls
+            stream.getAudioTracks().forEach(t => t.enabled = true)
+            stream.getVideoTracks().forEach(t => t.enabled = true)
 
             setMediaError(null)
             return stream
@@ -83,7 +85,7 @@ export default function ChatRoom({ onStop, onlineCount }) {
             )
             throw err
         }
-    }, [isMuted, isCamOff])
+    }, [])
 
     // Socket event handlers — now can use fetchMedia directly
     const handleMatched = useCallback(({ roomId: rId, initiator }) => {
