@@ -36,6 +36,14 @@ export default function ChatRoom({ onStop, onlineCount }) {
 
     const { messages, sendMessage, receiveMessage, clearMessages } = useChat(roomId)
 
+    // Use refs so callbacks can access latest values without circular deps
+    const destroyPeerRef = useRef(null)
+    const emitRef = useRef(null)
+    const fetchMediaRef = useRef(null)
+    const clearMessagesRef = useRef(null)
+    const localStreamRef = useRef(null)
+    const receiveMessageRef = useRef(null)
+
     const clearWaitingTimer = () => {
         if (waitingTimerRef.current) {
             clearTimeout(waitingTimerRef.current)
@@ -43,7 +51,86 @@ export default function ChatRoom({ onStop, onlineCount }) {
         }
     }
 
-    // ── Define fetchMedia FIRST (no dependencies on callbacks) ──
+    // Socket event handlers — use refs to avoid forward-reference issues
+    const handleMatched = useCallback(({ roomId: rId, initiator }) => {
+        clearWaitingTimer()
+        setAppState("chatting")
+        setStatusText("connected")
+        setPartnerLeft(false)
+        setWaitingTooLong(false)
+        setRemoteStream(null)
+        setWebrtcError(null)
+        if (clearMessagesRef.current) clearMessagesRef.current()
+        
+        // Ensure fresh stream before creating peer connection
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(t => t.stop())
+        }
+        setLocalStream(null)
+        
+        // Fetch fresh media, then when done, set roomId to trigger peer creation
+        if (fetchMediaRef.current) {
+            fetchMediaRef.current(null, null).then(() => {
+                setRoomId(rId)
+                setIsInitiator(initiator)
+            }).catch(err => {
+                console.error("[ChatRoom] Media fetch failed:", err)
+            })
+        }
+    }, [])
+
+    const handlePartnerLeft = useCallback(() => {
+        // Auto-reconnect: clean up and immediately find new partner
+        if (destroyPeerRef.current) destroyPeerRef.current()
+        setRemoteStream(null)
+        setRoomId(null)
+        setWebrtcError(null)
+        setPartnerLeft(false)
+        setAppState("waiting")
+        setStatusText("waiting")
+        if (clearMessagesRef.current) clearMessagesRef.current()
+        if (emitRef.current) emitRef.current("leave_room")
+        setShowSkipOverlay(true)
+        setTimeout(() => {
+            setShowSkipOverlay(false)
+            if (emitRef.current) emitRef.current("find_partner")
+        }, 800)
+    }, [])
+
+    const handleWaiting = useCallback(() => {
+        setStatusText("waiting")
+        setAppState("waiting")
+        clearWaitingTimer()
+        waitingTimerRef.current = setTimeout(() => setWaitingTooLong(true), 15000)
+    }, [])
+
+    // Now declare hooks that depend on callbacks above
+    const { emit } = useSocket({
+        matched: handleMatched,
+        partner_left: handlePartnerLeft,
+        waiting: handleWaiting,
+        receive_message: (data) => {
+            if (receiveMessageRef.current) receiveMessageRef.current(data)
+        },
+    })
+
+    const { destroyPeer } = useWebRTC({
+        roomId: appState === "chatting" ? roomId : null,
+        isInitiator,
+        localStream,
+        onRemoteStream: setRemoteStream,
+        onError: (msg) => setWebrtcError(msg),
+    })
+
+    // Keep refs in sync
+    useEffect(() => { destroyPeerRef.current = destroyPeer }, [destroyPeer])
+    useEffect(() => { emitRef.current = emit }, [emit])
+    useEffect(() => { fetchMediaRef.current = fetchMedia }, [fetchMedia])
+    useEffect(() => { clearMessagesRef.current = clearMessages }, [clearMessages])
+    useEffect(() => { localStreamRef.current = localStream }, [localStream])
+    useEffect(() => { receiveMessageRef.current = receiveMessage }, [receiveMessage])
+
+    // Fetch media with specific device IDs
     const fetchMedia = useCallback(async (aId, vId) => {
         try {
             const constraints = {
@@ -55,6 +142,7 @@ export default function ChatRoom({ onStop, onlineCount }) {
             console.log("[Media] Requesting stream with constraints:", constraints)
             const stream = await navigator.mediaDevices.getUserMedia(constraints)
 
+            // Stop old tracks - use a ref or capture current localStream to be safe
             setLocalStream(prevStream => {
                 if (prevStream) {
                     prevStream.getTracks().forEach(t => t.stop())
@@ -76,86 +164,24 @@ export default function ChatRoom({ onStop, onlineCount }) {
         }
     }, [isMuted, isCamOff])
 
-    // ── Socket handlers (NO dependencies - all state set via setters) ──
-    const handleMatched = useCallback(({ roomId: rId, initiator }) => {
-        clearWaitingTimer()
-        setAppState("chatting")
-        setStatusText("connected")
-        setPartnerLeft(false)
-        setWaitingTooLong(false)
-        setRemoteStream(null)
-        setWebrtcError(null)
-        clearMessages()
-        
-        // Stop old stream
-        if (localStream) {
-            localStream.getTracks().forEach(t => t.stop())
-        }
-        setLocalStream(null)
-        
-        // Refetch media, then set roomId to create peer
-        fetchMedia(null, null).then(() => {
-            setRoomId(rId)
-            setIsInitiator(initiator)
-        })
-    }, [localStream, fetchMedia, clearMessages])
-
-    const handlePartnerLeft = useCallback(() => {
-        setRemoteStream(null)
-        setRoomId(null)
-        setWebrtcError(null)
-        setPartnerLeft(false)
-        setAppState("waiting")
-        setStatusText("waiting")
-        clearMessages()
-        setShowSkipOverlay(true)
-        setTimeout(() => {
-            setShowSkipOverlay(false)
-        }, 800)
-    }, [clearMessages])
-
-    const handleWaiting = useCallback(() => {
-        setStatusText("waiting")
-        setAppState("waiting")
-        clearWaitingTimer()
-        waitingTimerRef.current = setTimeout(() => setWaitingTooLong(true), 15000)
-    }, [])
-
-    // ── Setup Socket ── 
-    const { emit } = useSocket({
-        matched: handleMatched,
-        partner_left: handlePartnerLeft,
-        waiting: handleWaiting,
-        receive_message: (data) => receiveMessage(data),
-    })
-
-    // ── Setup WebRTC ──
-    const { destroyPeer } = useWebRTC({
-        roomId: appState === "chatting" ? roomId : null,
-        isInitiator,
-        localStream,
-        onRemoteStream: setRemoteStream,
-        onError: (msg) => setWebrtcError(msg),
-    })
-
-    // ── Initial setup ──
+    // Initial media fetch
     useEffect(() => {
         fetchMedia(null, null)
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [])
 
+    // Start looking for partner on mount
     useEffect(() => {
         emit("find_partner")
     }, [emit])
 
     useEffect(() => () => clearWaitingTimer(), [])
 
-    // ── Event handlers ──
     const handleMuteToggle = () => {
         if (!localStream) return
         const newMutedState = !isMuted
         localStream.getAudioTracks().forEach(track => {
-            track.enabled = !newMutedState
+            track.enabled = !newMutedState  // Enable if NOT muted
         })
         setIsMuted(newMutedState)
     }
@@ -164,7 +190,7 @@ export default function ChatRoom({ onStop, onlineCount }) {
         if (!localStream) return
         const newCamOffState = !isCamOff
         localStream.getVideoTracks().forEach(track => {
-            track.enabled = !newCamOffState
+            track.enabled = !newCamOffState  // Enable if camera is NOT off
         })
         setIsCamOff(newCamOffState)
     }
