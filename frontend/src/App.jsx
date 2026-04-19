@@ -1,28 +1,23 @@
-import { useState, useEffect } from "react"
-import LandingPage from "./components/LandingPage"
-import ChatRoom from "./components/ChatRoom"
-import { getSocket } from "./hooks/useSocket"
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { IdentityProvider } from './lib/identity.jsx';
+import { Landing } from './pages/Landing';
+import { Room } from './pages/Room';
+import { FriendChat } from './pages/FriendChat';
 
 export default function App() {
-  const [screen, setScreen] = useState("landing")
-  const [onlineCount, setOnlineCount] = useState(0)
-
-  useEffect(() => {
-    const socket = getSocket()
-    socket.on("online_count", (count) => setOnlineCount(count))
-    return () => socket.off("online_count")
-  }, [])
-
   return (
-    <div className="h-full bg-[#030303]">
-      {screen === "landing" && (
-        <LandingPage onStart={() => setScreen("chatting")} onlineCount={onlineCount} />
-      )}
-      {screen === "chatting" && (
-        <ChatRoom onStop={() => setScreen("landing")} onlineCount={onlineCount} />
-      )}
-    </div>
-  )
+    <IdentityProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/room/:roomId" element={<Room />} />
+          <Route path="/friends/:chatId" element={<FriendChat />} />
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </BrowserRouter>
+    </IdentityProvider>
+  );
 }
 
 

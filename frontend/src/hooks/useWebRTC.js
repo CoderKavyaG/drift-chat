@@ -1,284 +1,363 @@
-import { useEffect, useRef, useCallback } from "react";
-import SimplePeer from "simple-peer";
-import { getSocket } from "./useSocket";
+import { useState, useRef, useCallback } from 'react';
+import { getICEServers, getUserMedia, getDisplayMedia, enumerateDevices } from '../lib/webrtc';
 
-const getIceServers = () => {
-    const servers = [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" },
-    ];
+export function useWebRTC() {
+  const localStreamRef = useRef(null);
+  const peerConnectionsRef = useRef(new Map());
+  const screenShareTrackRef = useRef(null);
+  
+  const [remoteStreams, setRemoteStreams] = useState(new Map());
+  const [isMuted, setIsMuted] = useState(false);
+  const [isCameraOff, setIsCameraOff] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
 
-    const username = import.meta.env.VITE_TURN_USERNAME;
-    const credential = import.meta.env.VITE_TURN_CREDENTIAL;
-    const turnUrl = import.meta.env.VITE_TURN_URL;
-    const turnUrl2 = import.meta.env.VITE_TURN_URL_2;
+  const createPeerConnection = useCallback((peerId, isInitiator, signaling) => {
+    try {
+      const iceServers = getICEServers();
+      const peerConnection = new RTCPeerConnection({ iceServers });
 
-    if (turnUrl && username && credential) {
-        servers.push({ urls: turnUrl, username, credential });
-        console.log("[WebRTC] TURN Server 1 configured:", turnUrl);
-    } else {
-        console.warn("[WebRTC] TURN Server 1 NOT configured - missing credentials");
+      // Add local tracks
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => {
+          peerConnection.addTrack(track, localStreamRef.current);
+        });
+      }
+
+      // Handle remote tracks
+      peerConnection.ontrack = (event) => {
+        console.log('[WebRTC] Received remote track:', event.track.kind);
+        const [stream] = event.streams;
+        setRemoteStreams(prev => {
+          const newMap = new Map(prev);
+          newMap.set(peerId, stream);
+          return newMap;
+        });
+      };
+
+      // Handle ICE candidates
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+          signaling.send({
+            type: 'ice-candidate',
+            targetPeerId: peerId,
+            candidate: event.candidate
+          });
+        }
+      };
+
+      // Handle connection state changes
+      peerConnection.oniceconnectionstatechange = () => {
+        console.log('[WebRTC] ICE connection state:', peerConnection.iceConnectionState);
+      };
+
+      // Handle negotiation
+      peerConnection.onnegotiationneeded = async () => {
+        if (isInitiator) {
+          try {
+            const offer = await peerConnection.createOffer();
+            await peerConnection.setLocalDescription(offer);
+            signaling.send({
+              type: 'offer',
+              targetPeerId: peerId,
+              sdp: peerConnection.localDescription
+            });
+          } catch (err) {
+            console.error('[WebRTC] Error creating offer:', err);
+          }
+        }
+      };
+
+      // If initiator, create offer
+      if (isInitiator) {
+        peerConnection.createOffer()
+          .then(offer => peerConnection.setLocalDescription(offer))
+          .then(() => {
+            signaling.send({
+              type: 'offer',
+              targetPeerId: peerId,
+              sdp: peerConnection.localDescription
+            });
+          })
+          .catch(err => console.error('[WebRTC] Error creating offer:', err));
+      }
+
+      peerConnectionsRef.current.set(peerId, peerConnection);
+      return peerConnection;
+    } catch (err) {
+      console.error('[WebRTC] Error creating peer connection:', err);
+      return null;
     }
-    
-    if (turnUrl2 && username && credential) {
-        servers.push({ urls: turnUrl2, username, credential });
-        console.log("[WebRTC] TURN Server 2 configured:", turnUrl2);
+  }, []);
+
+  const handleOffer = useCallback(async (fromPeerId, sdp, signaling) => {
+    try {
+      let peerConnection = peerConnectionsRef.current.get(fromPeerId);
+      if (!peerConnection) {
+        peerConnection = createPeerConnection(fromPeerId, false, signaling);
+      }
+
+      if (!peerConnection) return;
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      signaling.send({
+        type: 'answer',
+        targetPeerId: fromPeerId,
+        sdp: peerConnection.localDescription
+      });
+    } catch (err) {
+      console.error('[WebRTC] Error handling offer:', err);
+    }
+  }, [createPeerConnection]);
+
+  const handleAnswer = useCallback(async (fromPeerId, sdp) => {
+    try {
+      const peerConnection = peerConnectionsRef.current.get(fromPeerId);
+      if (!peerConnection) return;
+
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
+    } catch (err) {
+      console.error('[WebRTC] Error handling answer:', err);
+    }
+  }, []);
+
+  const handleIceCandidate = useCallback(async (fromPeerId, candidate) => {
+    try {
+      const peerConnection = peerConnectionsRef.current.get(fromPeerId);
+      if (!peerConnection) return;
+
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.error('[WebRTC] Error adding ICE candidate:', err);
+    }
+  }, []);
+
+  const handlePeerLeft = useCallback((peerId) => {
+    const peerConnection = peerConnectionsRef.current.get(peerId);
+    if (peerConnection) {
+      peerConnection.close();
+      peerConnectionsRef.current.delete(peerId);
     }
 
-    console.log(`[WebRTC] Total ICE Servers: ${servers.length}`);
-    servers.forEach((srv, i) => console.log(`  [${i}] ${srv.urls}`));
-    return { iceServers: servers };
-};
+    setRemoteStreams(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(peerId);
+      return newMap;
+    });
+  }, []);
 
-export function useWebRTC({ roomId, isInitiator, localStream, onRemoteStream, onError }) {
-    const peerRef = useRef(null);
-    const streamRef = useRef(localStream);
-    const signalBuffer = useRef([]);
-    const socket = getSocket();
-    const currentRoomId = useRef(null);
+  const initializeLocalStream = useCallback(async () => {
+    try {
+      const stream = await getUserMedia();
+      localStreamRef.current = stream;
+      return stream;
+    } catch (err) {
+      console.error('[WebRTC] Error getting user media:', err);
+      return null;
+    }
+  }, []);
 
-    const destroyPeer = useCallback(() => {
-        if (peerRef.current) {
-            console.log("[WebRTC] Destroying peer...");
-            peerRef.current.destroy();
-            peerRef.current = null;
+  const toggleMute = useCallback(() => {
+    if (!localStreamRef.current) return isMuted;
+
+    const audioTracks = localStreamRef.current.getAudioTracks();
+    const newMutedState = !isMuted;
+    audioTracks.forEach(track => {
+      track.enabled = !newMutedState;
+    });
+    setIsMuted(newMutedState);
+    return newMutedState;
+  }, [isMuted]);
+
+  const toggleCamera = useCallback(() => {
+    if (!localStreamRef.current) return isCameraOff;
+
+    const videoTracks = localStreamRef.current.getVideoTracks();
+    const newCameraOffState = !isCameraOff;
+    videoTracks.forEach(track => {
+      track.enabled = !newCameraOffState;
+    });
+    setIsCameraOff(newCameraOffState);
+    return newCameraOffState;
+  }, [isCameraOff]);
+
+  const startScreenShare = useCallback(async () => {
+    try {
+      const screenStream = await getDisplayMedia();
+      const screenVideoTrack = screenStream.getVideoTracks()[0];
+
+      if (!screenVideoTrack) {
+        console.error('[WebRTC] No video track from screen share');
+        return;
+      }
+
+      // Store original camera track
+      const originalVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+
+      // Replace track in all peer connections
+      const replacementPromises = Array.from(peerConnectionsRef.current.entries()).map(
+        async ([peerId, peerConnection]) => {
+          const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            await sender.replaceTrack(screenVideoTrack);
+          }
         }
-        signalBuffer.current = [];
-        currentRoomId.current = null;
-    }, []);
+      );
 
-    // ── Update Tracks ──────────────────────────────────────────────────────────
-    useEffect(() => {
-        if (!peerRef.current || peerRef.current.destroyed || !localStream) {
-            streamRef.current = localStream;
-            return;
-        }
+      await Promise.all(replacementPromises);
 
-        if (streamRef.current !== localStream) {
-            console.log("[WebRTC] localStream changed, syncing tracks...");
-            const peer = peerRef.current;
-            
-            if (!streamRef.current && localStream) {
-                // First time attaching stream - add only if connection not yet established
-                console.log("[WebRTC] Adding local stream tracks for first time");
-                const tracks = localStream.getTracks();
-                
-                // Check connection state - don't add if already connected (avoids renegotiation issues)
-                const connState = peer._pc?.connectionState;
-                if (connState === "connected" || connState === "completed") {
-                    console.warn(`[WebRTC] Connection already ${connState} - skipping track add`);
-                    streamRef.current = localStream;
-                    return;
-                }
-                
-                tracks.forEach((track) => {
-                    try {
-                        console.log(`[WebRTC] Adding ${track.kind} track (conn state: ${connState})`);
-                        peer.addTrack(track, localStream);
-                    } catch (e) {
-                        console.error(`[WebRTC] addTrack(${track.kind}) failed:`, e);
-                    }
-                });
-            } else if (streamRef.current && localStream) {
-                // Replace or add individual tracks
-                const newTracks = localStream.getTracks();
-                newTracks.forEach(newTrack => {
-                    try {
-                        // SimplePeer internal track management
-                        const sender = peer._pc.getSenders().find(s => s.track && s.track.kind === newTrack.kind);
-                        if (sender) {
-                            sender.replaceTrack(newTrack);
-                        } else {
-                            peer.addTrack(newTrack, localStream);
-                        }
-                    } catch (e) {
-                        console.warn(`[WebRTC] syncTrack (${newTrack.kind}) failed:`, e.message);
-                    }
-                });
-            } else if (streamRef.current && !localStream) {
-                // Stream removed
-                try {
-                    peer.removeStream(streamRef.current);
-                } catch (e) {}
+      // Store screen track and listen for end
+      screenShareTrackRef.current = screenVideoTrack;
+      screenVideoTrack.onended = async () => {
+        console.log('[WebRTC] Screen share ended');
+        if (originalVideoTrack) {
+          const replacementPromises = Array.from(peerConnectionsRef.current.entries()).map(
+            async ([peerId, peerConnection]) => {
+              const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+              if (sender) {
+                await sender.replaceTrack(originalVideoTrack);
+              }
             }
-            streamRef.current = localStream;
+          );
+          await Promise.all(replacementPromises);
         }
-    }, [localStream]);
+        screenShareTrackRef.current = null;
+        setIsScreenSharing(false);
+      };
 
-    // ── Peer Lifecycle ──────────────────────────────────────────────────────────
-    useEffect(() => {
-        if (!roomId) {
-            destroyPeer();
-            return;
-        }
+      setIsScreenSharing(true);
+    } catch (err) {
+      console.error('[WebRTC] Error starting screen share:', err);
+    }
+  }, []);
 
-        // Avoid re-initializing if roomId hasn't changed (React 18 StrictMode fix)
-        if (currentRoomId.current === roomId && peerRef.current) {
-            return;
-        }
-
-        console.log(`[WebRTC] Initializing peer for room: ${roomId}, initiator: ${isInitiator}`);
-        destroyPeer();
-        currentRoomId.current = roomId;
-
-        try {
-            console.log(`[WebRTC] Stream status at peer creation - initiator: ${isInitiator}, hasStream: ${!!streamRef.current}`);
-            
-            // Log local stream tracks
-            if (streamRef.current) {
-                const audioTracks = streamRef.current.getAudioTracks();
-                const videoTracks = streamRef.current.getVideoTracks();
-                console.log(`[WebRTC] Local stream tracks - audio: ${audioTracks.length}, video: ${videoTracks.length}`);
-                audioTracks.forEach((t, i) => console.log(`  Audio track ${i}: enabled=${t.enabled}`));
-                videoTracks.forEach((t, i) => console.log(`  Video track ${i}: enabled=${t.enabled}`));
+  const stopScreenShare = useCallback(async () => {
+    if (screenShareTrackRef.current) {
+      screenShareTrackRef.current.stop();
+      const originalVideoTrack = localStreamRef.current?.getVideoTracks()[0];
+      
+      if (originalVideoTrack && !isCameraOff) {
+        const replacementPromises = Array.from(peerConnectionsRef.current.entries()).map(
+          async ([peerId, peerConnection]) => {
+            const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+            if (sender) {
+              await sender.replaceTrack(originalVideoTrack);
             }
-            
-            const peer = new SimplePeer({
-                initiator: isInitiator,
-                stream: streamRef.current || undefined,
-                trickle: true,
-                config: getIceServers(),
-                offerOptions: {
-                    offerToReceiveAudio: true,
-                    offerToReceiveVideo: true,
-                },
-                answerOptions: {
-                    offerToReceiveAudio: true,
-                    offerToReceiveVideo: true,
-                },
-            });
+          }
+        );
+        await Promise.all(replacementPromises);
+      }
+      
+      screenShareTrackRef.current = null;
+      setIsScreenSharing(false);
+    }
+  }, [isCameraOff]);
 
-            peer.on("signal", (signal) => {
-                console.log(`[WebRTC] Sending signal (${signal.type})`);
-                if (signal.type === "offer" || signal.type === "answer") {
-                    const hasAudio = signal.sdp?.includes("m=audio");
-                    const hasVideo = signal.sdp?.includes("m=video");
-                    console.log(`[WebRTC] ${signal.type} SDP includes - audio: ${hasAudio}, video: ${hasVideo}`);
-                    console.log(`[WebRTC] ${signal.type} SDP length: ${signal.sdp?.length || 0} bytes`);
-                }
-                console.log(`[WebRTC] Emitting webrtc_signal event with ${signal.type}`);
-                socket.emit("webrtc_signal", { roomId, signal });
-                console.log(`[WebRTC] Emitted webrtc_signal (${signal.type})`);
-            });
+  const changeCamera = useCallback(async (deviceId) => {
+    try {
+      const newStream = await getUserMedia({ video: { deviceId: { exact: deviceId } } });
+      const newVideoTrack = newStream.getVideoTracks()[0];
 
-            // Use track event (more reliable than stream event)
-            const remoteStreams = new Map();
-            peer.on("track", (track, stream) => {
-                console.log(`[WebRTC] Received remote track: ${track.kind} from stream ${stream.id}`);
-                
-                // If this is a new stream, emit it
-                if (!remoteStreams.has(stream.id)) {
-                    remoteStreams.set(stream.id, true);
-                    onRemoteStream(stream);
-                    console.log(`[WebRTC] Emitted new remote stream: ${stream.id}`);
-                }
-                
-                // Always ensure audio tracks are enabled
-                stream.getAudioTracks().forEach((t, idx) => {
-                    console.log(`[WebRTC] Audio track ${idx}: enabled=${t.enabled} (setting to true)`);
-                    t.enabled = true;
-                });
-                
-                // Log all tracks on the stream
-                console.log(`[WebRTC] Stream ${stream.id} now has:`, {
-                    audio: stream.getAudioTracks().length,
-                    video: stream.getVideoTracks().length
-                });
-            });
+      if (!newVideoTrack) return;
 
-            // Fallback for browsers/scenarios where only 'stream' event fires
-            peer.on("stream", (remoteStream) => {
-                console.log("[WebRTC] Received remote stream (fallback):", remoteStream.id);
-                if (!remoteStreams.has(remoteStream.id)) {
-                    remoteStreams.set(remoteStream.id, true);
-                    remoteStream.getAudioTracks().forEach(t => {
-                        console.log("[WebRTC] Enabling audio track from stream event");
-                        t.enabled = true;
-                    });
-                    onRemoteStream(remoteStream);
-                    console.log("[WebRTC] Emitted remote stream from fallback handler");
-                }
-            });
+      // Remove old video tracks from local stream
+      const oldVideoTracks = localStreamRef.current?.getVideoTracks() || [];
+      oldVideoTracks.forEach(track => track.stop());
 
-            peer.on("connect", () => {
-                console.log("[WebRTC] Peer connection established");
-            });
+      // Add new video track to local stream
+      if (localStreamRef.current) {
+        localStreamRef.current.removeTrack(...oldVideoTracks);
+        localStreamRef.current.addTrack(newVideoTrack);
+      }
 
-            peer.on("error", (err) => {
-                console.error("[WebRTC] Peer error:", err);
-                console.error("[WebRTC] Error details - Name:", err.name, "Message:", err.message);
-                if (peer._pc) {
-                    console.error("[WebRTC] Connection state:", peer._pc.connectionState);
-                    console.error("[WebRTC] ICE connection state:", peer._pc.iceConnectionState);
-                    console.error("[WebRTC] ICE gathering state:", peer._pc.iceGatheringState);
-                    console.error("[WebRTC] Peer connection state:", peer._pc.signalingState);
-                }
-                if (err.message.includes("Connection")) {
-                    console.error("[WebRTC] Connection failed - likely TURN server or firewall issue");
-                }
-                onError("Connection failed. Video/audio may be unavailable.");
-            });
-
-            peer.on("connectionstatechange", (state) => {
-                console.log("[WebRTC] Connection state changed:", state);
-                if (peer._pc) {
-                    console.log("[WebRTC] Internal PC state - connState:", peer._pc.connectionState, "iceState:", peer._pc.iceConnectionState);
-                }
-            });
-
-            peerRef.current = peer;
-
-            // Process any signals that arrived before peer was ready
-            if (signalBuffer.current.length > 0) {
-                console.log(`[WebRTC] Processing ${signalBuffer.current.length} buffered signals`);
-                signalBuffer.current.forEach(sig => {
-                    try { 
-                        peer.signal(sig); 
-                    } catch (e) { 
-                        console.warn("[WebRTC] Signal application failed:", e.message); 
-                    }
-                });
-                signalBuffer.current = [];
-            }
-        } catch (err) {
-            console.error("[WebRTC] Peer creation failed:", err);
-            onError("WebRTC setup failed.");
+      // Replace video track in all peer connections
+      const replacementPromises = Array.from(peerConnectionsRef.current.entries()).map(
+        async ([peerId, peerConnection]) => {
+          const sender = peerConnection.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) {
+            await sender.replaceTrack(newVideoTrack);
+          }
         }
+      );
 
-        const handleSignal = ({ signal, roomId: incomingRoomId }) => {
-            console.log(`[WebRTC] Received signal (${signal.type}) for room ${incomingRoomId || 'unknown'}`);
-            
-            // If the signal is for our current room (or if room matching isn't sent, assume current)
-            if (peerRef.current && !peerRef.current.destroyed) {
-                try {
-                    console.log(`[WebRTC] Applying signal (${signal.type}) to peer`);
-                    peerRef.current.signal(signal);
-                    console.log(`[WebRTC] Signal (${signal.type}) applied successfully`);
-                } catch (e) {
-                    console.error(`[WebRTC] Error signaling (${signal.type}):`, e.message);
-                }
-            } else {
-                console.log(`[WebRTC] Peer not ready (destroyed=${peerRef.current?.destroyed}), buffering signal (${signal.type})`);
-                signalBuffer.current.push(signal);
-            }
-        };
+      await Promise.all(replacementPromises);
+    } catch (err) {
+      console.error('[WebRTC] Error changing camera:', err);
+    }
+  }, []);
 
-        socket.on("webrtc_signal", handleSignal);
+  const changeAudio = useCallback(async (deviceId) => {
+    try {
+      const newStream = await getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+      const newAudioTrack = newStream.getAudioTracks()[0];
 
-        return () => {
-            // Note: We don't destroyPeer() here because we want it to persist across re-renders 
-            // of the same room. destroyPeer() is called when roomId changes or becomes null.
-            socket.off("webrtc_signal", handleSignal);
-        };
-    }, [roomId, isInitiator, socket, onRemoteStream, onError, destroyPeer]);
+      if (!newAudioTrack) return;
 
-    return { destroyPeer };
+      // Remove old audio tracks
+      const oldAudioTracks = localStreamRef.current?.getAudioTracks() || [];
+      oldAudioTracks.forEach(track => track.stop());
+
+      // Add new audio track
+      if (localStreamRef.current) {
+        localStreamRef.current.removeTrack(...oldAudioTracks);
+        localStreamRef.current.addTrack(newAudioTrack);
+      }
+
+      // Replace audio track in all peer connections
+      const replacementPromises = Array.from(peerConnectionsRef.current.entries()).map(
+        async ([peerId, peerConnection]) => {
+          const sender = peerConnection.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender) {
+            await sender.replaceTrack(newAudioTrack);
+          }
+        }
+      );
+
+      await Promise.all(replacementPromises);
+    } catch (err) {
+      console.error('[WebRTC] Error changing audio:', err);
+    }
+  }, []);
+
+  const hangUp = useCallback(() => {
+    // Close all peer connections
+    peerConnectionsRef.current.forEach((pc) => {
+      pc.close();
+    });
+    peerConnectionsRef.current.clear();
+
+    // Stop all local tracks
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+
+    // Clear remote streams
+    setRemoteStreams(new Map());
+    setIsMuted(false);
+    setIsCameraOff(false);
+    setIsScreenSharing(false);
+  }, []);
+
+  return {
+    localStreamRef,
+    remoteStreams,
+    isMuted,
+    isCameraOff,
+    isScreenSharing,
+    initializeLocalStream,
+    toggleMute,
+    toggleCamera,
+    startScreenShare,
+    stopScreenShare,
+    changeCamera,
+    changeAudio,
+    hangUp,
+    handleOffer,
+    handleAnswer,
+    handleIceCandidate,
+    handlePeerLeft,
+    createPeerConnection
+  };
 }
-
-
-
-
-

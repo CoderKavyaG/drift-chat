@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import { ArrowRight, Plus, Minus, Sparkles, Send } from "lucide-react"
 import MascotCharacter from "./MascotCharacter"
 
@@ -14,7 +14,7 @@ const COLORS = {
 // ─────────────────────────────────────────────────────────────
 // Navbar Component
 // ─────────────────────────────────────────────────────────────
-function Navbar({ onStart }) {
+function Navbar() {
   const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
@@ -51,8 +51,8 @@ function Navbar({ onStart }) {
 
         {/* CTA */}
         <button
-          onClick={onStart}
-          className="bg-[#1A1A0F] text-[#F5F0E8] px-6 py-2 rounded-full font-bold uppercase text-sm tracking-widest hover:bg-[#F4600C] hover:text-[#1A1A0F] transition-all duration-300"
+          className="bg-[#1A1A0F] text-[#F5F0E8] px-6 py-2 rounded-full font-bold uppercase text-sm tracking-widest hover:bg-[#F4600C] hover:text-[#1A1A0F] transition-all duration-300 cursor-not-allowed opacity-70"
+          disabled
         >
           START DRIFTING
         </button>
@@ -64,20 +64,7 @@ function Navbar({ onStart }) {
 // ─────────────────────────────────────────────────────────────
 // Hero Section
 // ─────────────────────────────────────────────────────────────
-function Hero({ onStart }) {
-  // Staggered text animation
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  }
-
-  const item = {
-    hidden: { opacity: 0, y: 50 },
-    show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } }
-  }
+function Hero() {
 
   return (
     <section 
@@ -127,11 +114,11 @@ function Hero({ onStart }) {
           {["Solo", "Friends", "Groups"].map((type, idx) => (
             <button 
               key={type}
-              onClick={type !== "Groups" ? onStart : undefined}
-              className={`flex items-center justify-between px-6 py-3 rounded-full font-bold uppercase tracking-wider text-sm w-[160px] border border-[#1A1A0F] transition-all ${
+              disabled
+              className={`flex items-center justify-between px-6 py-3 rounded-full font-bold uppercase tracking-wider text-sm w-[160px] border border-[#1A1A0F] transition-all cursor-not-allowed opacity-70 ${
                 idx === 1 
                   ? "bg-[#1A1A0F] text-[#F5F0E8]" 
-                  : "bg-transparent text-[#1A1A0F] hover:bg-[#1A1A0F] hover:text-[#F5F0E8]"
+                  : "bg-transparent text-[#1A1A0F]"
               }`}
             >
               {type}
@@ -416,12 +403,12 @@ function Footer() {
 // ─────────────────────────────────────────────────────────────
 // Main LandingPage Component
 // ─────────────────────────────────────────────────────────────
-export default function LandingPage({ onStart, onlineCount }) {
+export default function LandingPage() {
   // We apply global typography via container class text styling
   return (
     <div className="w-full min-h-screen font-sans selection:bg-[#F4600C] selection:text-[#F5F0E8] scroll-smooth origin-top">
-      <Navbar onStart={onStart} />
-      <Hero onStart={onStart} />
+      <Navbar />
+      <Hero />
       <WhySection />
       <StatsSection />
       <FeaturesSection />
