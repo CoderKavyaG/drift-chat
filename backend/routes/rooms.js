@@ -5,11 +5,14 @@ const roomsService = require('../services/rooms');
 router.post('/join', async (req, res) => {
   try {
     const ghostId = req.user.ghostId;
+    const ghostName = req.user.ghostName;
     const { mode, roomCode } = req.body;
 
     if (!mode || (mode !== 'random' && mode !== 'group')) {
       return res.status(400).json({ error: 'Invalid mode' });
     }
+
+    console.log(`[API] Join request: ${ghostName} (${ghostId}), mode: ${mode}`);
 
     let roomId, roomCodeResult, peers;
 
@@ -18,16 +21,19 @@ router.post('/join', async (req, res) => {
       const waitingRoom = await roomsService.findWaitingRoom(req.redis);
       
       if (waitingRoom) {
+        console.log(`[API] Joining existing room: ${waitingRoom.roomId}`);
         roomId = waitingRoom.roomId;
         roomCodeResult = waitingRoom.roomCode;
       } else {
         const newRoom = await roomsService.createRoom(req.redis, 'random');
+        console.log(`[API] Created new room: ${newRoom.roomId}`);
         roomId = newRoom.roomId;
         roomCodeResult = newRoom.roomCode;
       }
       
       const joinResult = await roomsService.joinRoom(req.redis, roomId, ghostId);
       peers = joinResult.peers;
+      console.log(`[API] User now in room ${roomId} with peers: ${peers.join(', ')}`);
     } else if (mode === 'group') {
       if (roomCode) {
         // Join existing room by code

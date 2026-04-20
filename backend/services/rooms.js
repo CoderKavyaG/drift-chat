@@ -29,6 +29,7 @@ async function createRoom(redis, mode) {
     await redis.set(`roomcode:${roomCode}`, roomId);
     await redis.expire(`roomcode:${roomCode}`, 7200);
     
+    console.log(`[ROOMS] Created new ${mode} room: ${roomId} (code: ${roomCode})`);
     return { roomId, roomCode };
   } catch (err) {
     console.error('[ROOMS] Error creating room:', err.message);
@@ -50,7 +51,7 @@ async function joinRoom(redis, roomId, ghostId) {
       peers = [];
     }
 
-    if (!peers.includes(ghostId) && peers.length < 4) {
+    if (!peers.includes(ghostId) && peers.length < 2) {
       peers.push(ghostId);
       await redis.hset(`room:${roomId}`, 'peers', JSON.stringify(peers));
     }
@@ -80,12 +81,14 @@ async function findWaitingRoom(redis) {
         } catch (e) {
           peers = [];
         }
-        if (peers.length < 4) {
+        if (peers.length === 1) {
           const roomId = key.replace('room:', '');
+          console.log(`[ROOMS] Found waiting room ${roomId} with ${peers.length} peer(s)`);
           return { roomId, roomCode: roomData.roomCode };
         }
       }
     }
+    console.log('[ROOMS] No waiting rooms found, will create new room');
     return null;
   } catch (err) {
     console.error('[ROOMS] Error finding waiting room:', err.message);
