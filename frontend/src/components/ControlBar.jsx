@@ -8,23 +8,24 @@ function IconButton({ icon: Icon, label, onClick, isActive, isRed, isDisabled })
       <button
         onClick={onClick}
         disabled={isDisabled}
-        className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+        className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
           isDisabled
             ? 'opacity-50 cursor-not-allowed'
             : isRed
-            ? 'bg-red-600 hover:bg-red-700 text-white'
+            ? 'bg-red-600 hover:bg-red-700 text-[#F5F0E8]'
             : isActive
-            ? 'bg-blue-600 text-white'
-            : 'bg-white/10 hover:bg-white/20 text-white'
+            ? 'bg-[#F4600C] text-[#1A1A0F]'
+            : 'bg-[#F5F0E8]/10 hover:bg-[#F5F0E8]/20 text-[#F5F0E8]'
         }`}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        title={label}
       >
         <Icon className="w-5 h-5" />
       </button>
 
       {showTooltip && (
-        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-black/80 text-white text-xs px-2 py-1 rounded whitespace-nowrap pointer-events-none">
+        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-[#1A1A0F]/90 text-[#F5F0E8] text-xs px-3 py-1 rounded-lg whitespace-nowrap pointer-events-none border border-[#F4600C]/30 font-semibold">
           {label}
         </div>
       )}
@@ -131,7 +132,7 @@ export function ControlBar({
   onHangup
 }) {
   return (
-    <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-40 flex items-center justify-center gap-2 px-6 py-4 rounded-full bg-black/60 backdrop-blur-lg border border-white/10">
+    <div className="flex items-center justify-center gap-3 px-6 py-4">
       <IconButton
         icon={isMuted ? MicOffIcon : MicIcon}
         label={isMuted ? 'Unmute' : 'Mute'}
@@ -160,8 +161,8 @@ export function ControlBar({
           onClick={onToggleChat}
         />
         {unreadCount > 0 && (
-          <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center text-xs text-white font-bold">
-            {unreadCount}
+          <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center text-xs text-white font-bold">
+            {unreadCount > 9 ? '9+' : unreadCount}
           </div>
         )}
       </div>

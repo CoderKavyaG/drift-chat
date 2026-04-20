@@ -227,118 +227,175 @@ export function Room() {
 
   if (loading) {
     return (
-      <div className="w-full h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <p className="text-white/60">Connecting...</p>
+      <div className="w-full h-screen bg-[#1A1A0F] flex items-center justify-center">
+        <p className="text-[#F5F0E8]/60 font-medium">Connecting...</p>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-screen bg-[#0a0a0f] flex flex-col overflow-hidden">
-      <GhostIdentityBadge />
+    <div className="w-full h-screen bg-[#1A1A0F] flex flex-col overflow-hidden">
+      
+      {/* TOP BAR */}
+      <div className="h-14 border-b border-[#F4600C]/20 px-6 flex items-center justify-between bg-[#1A1A0F]/50 backdrop-blur-sm">
+        {/* Left: Back button */}
+        <button
+          onClick={handleHangup}
+          className="flex items-center gap-2 text-[#F5F0E8] hover:text-[#F4600C] transition-colors"
+        >
+          <span className="text-xl">←</span>
+        </button>
 
-      {/* Top Bar */}
-      <div className="h-16 border-b border-white/10 px-6 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-white">Drift</h1>
-
+        {/* Center: Room code */}
         <div className="flex-1 text-center">
           {roomCode && (
             <button
               onClick={() => {
                 navigator.clipboard.writeText(`drift.app/room?code=${roomCode}`);
+                alert('Link copied!');
               }}
-              className="text-sm text-white/70 hover:text-white cursor-pointer"
-              title="Click to copy"
+              className="text-xs font-bold uppercase tracking-widest text-[#F5F0E8]/70 hover:text-[#F4600C] transition-colors"
+              title="Click to copy room code"
             >
-              Room: {roomCode}
+              Room • {roomCode}
             </button>
           )}
         </div>
 
+        {/* Right: Status badges */}
         <div className="flex items-center gap-3">
-          <ActivePeersBar peers={peers} />
-          <ConnectionStatus connectionState={connectionState} />
+          <div className="text-xs font-bold uppercase tracking-widest text-[#F5F0E8]/60">
+            {remoteCount} {remoteCount === 1 ? 'person' : 'people'}
+          </div>
+          <div className={`w-2 h-2 rounded-full ${connectionState === 'connected' ? 'bg-green-400' : 'bg-yellow-400'}`} />
         </div>
       </div>
 
-      {/* Video Grid */}
-      <div className="flex-1 overflow-hidden p-4">
-        {remoteCount === 0 ? (
-          // Waiting state
-          <div className="w-full h-full relative flex items-center justify-center">
-            <div className="relative w-96 h-72 rounded-2xl overflow-hidden ring-1 ring-white/10 bg-[#111118]">
-              {webRTC.localStreamRef.current && (
-                <video
-                  autoPlay
-                  muted
-                  playsInline
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    transform: 'scaleX(-1)'
-                  }}
-                  srcObject={webRTC.localStreamRef.current}
-                />
-              )}
+      {/* MAIN CONTENT: Two-column layout */}
+      <div className="flex-1 flex overflow-hidden gap-0">
+        
+        {/* LEFT: Video Grid */}
+        <div className="flex-1 overflow-hidden p-4 bg-[#1A1A0F] flex flex-col">
+          {remoteCount === 0 ? (
+            // Waiting state
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="relative w-full max-w-md aspect-video rounded-2xl overflow-hidden ring-2 ring-[#F4600C]/30 bg-black">
+                {webRTC.localStreamRef.current && (
+                  <video
+                    autoPlay
+                    muted
+                    playsInline
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover',
+                      transform: 'scaleX(-1)'
+                    }}
+                    srcObject={webRTC.localStreamRef.current}
+                  />
+                )}
 
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                <div className="text-center">
-                  <p className="text-white font-semibold mb-2">Waiting for strangers...</p>
-                  <div className="flex justify-center gap-2">
-                    <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                    <div className="w-2 h-2 bg-white/60 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <div className="text-center">
+                    <p className="text-[#F5F0E8] font-bold mb-3 uppercase tracking-wider">Waiting for someone...</p>
+                    <div className="flex justify-center gap-2">
+                      <div className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                      <div className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        ) : (
-          // Video grid
-          <div
-            className="w-full h-full gap-4"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-              gridTemplateRows: `repeat(${gridRows}, 1fr)`,
-              gridAutoFlow: 'dense'
-            }}
-          >
-            {/* Local video */}
-            {webRTC.localStreamRef.current && (
-              <VideoTile
-                stream={webRTC.localStreamRef.current}
-                ghostName={ghostName}
-                avatarId={avatarId}
-                isMuted={webRTC.isMuted}
-                isLocal
-                isVideoOff={webRTC.isCameraOff}
-              />
-            )}
+          ) : (
+            // Video grid with responsive layout
+            <div
+              className="w-full h-full gap-3"
+              style={{
+                display: 'grid',
+                gridTemplateColumns: `repeat(${Math.min(2, gridCols)}, 1fr)`,
+                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
+                gridAutoFlow: 'dense'
+              }}
+            >
+              {/* Local video */}
+              {webRTC.localStreamRef.current && (
+                <VideoTile
+                  stream={webRTC.localStreamRef.current}
+                  ghostName={ghostName}
+                  avatarId={avatarId}
+                  isMuted={webRTC.isMuted}
+                  isLocal
+                  isVideoOff={webRTC.isCameraOff}
+                />
+              )}
 
-            {/* Remote videos */}
-            {peers.map(peer => (
-              <VideoTile
-                key={peer.ghostId}
-                stream={webRTC.remoteStreams.get(peer.ghostId)}
-                ghostName={peer.ghostName}
-                avatarId={peer.avatarId}
-                isMuted={false}
-                isLocal={false}
-                isVideoOff={false}
-              />
-            ))}
-          </div>
-        )}
+              {/* Remote videos */}
+              {peers.map(peer => (
+                <VideoTile
+                  key={peer.ghostId}
+                  stream={webRTC.remoteStreams.get(peer.ghostId)}
+                  ghostName={peer.ghostName}
+                  avatarId={peer.avatarId}
+                  isMuted={false}
+                  isLocal={false}
+                  isVideoOff={false}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Chat Panel */}
+        <div className="w-80 border-l border-[#F4600C]/20 flex flex-col bg-[#0a0a0f]">
+          <ChatPanel
+            visible={true}
+            onClose={() => setChatVisible(false)}
+            remoteStreams={webRTC.remoteStreams}
+            onSendMessage={(msg) => {
+              if (signalingsSend && roomId) {
+                signalingsSend({ ...msg, roomId });
+              }
+            }}
+            typingPeers={[]}
+            isPermanent={true}
+          />
+        </div>
+      </div>
+
+      {/* BOTTOM: Control Bar */}
+      <div className="h-24 border-t border-[#F4600C]/20 px-6 py-4 flex items-center justify-center gap-4 bg-[#1A1A0F]/50 backdrop-blur-sm">
+        <ControlBar
+          isMuted={webRTC.isMuted}
+          onToggleMute={webRTC.toggleMute}
+          isCameraOff={webRTC.isCameraOff}
+          onToggleCamera={webRTC.toggleCamera}
+          isScreenSharing={webRTC.isScreenSharing}
+          onStartScreenShare={webRTC.startScreenShare}
+          onStopScreenShare={webRTC.stopScreenShare}
+          onToggleChat={() => {
+            setChatVisible(!chatVisible);
+            if (!chatVisible) setUnreadCount(0);
+          }}
+          unreadCount={unreadCount}
+          onNextStranger={handleNextStranger}
+          onReport={() => {
+            if (peers.length > 0) {
+              setReportTarget(peers[0].ghostId);
+              setReportOpen(true);
+            }
+          }}
+          onSettings={() => setSettingsOpen(true)}
+          onHangup={handleHangup}
+        />
       </div>
 
       {/* Room Killed Overlay */}
       {roomKilledOverlay && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="text-center">
-            <p className="text-xl text-white mb-4">Room closed</p>
-            <p className="text-white/60">Returning home...</p>
+          <div className="text-center px-6 py-12 bg-[#1A1A0F] rounded-2xl border border-[#F4600C]/30">
+            <p className="text-xl font-bold text-[#F5F0E8] mb-4 uppercase tracking-wider">Room Closed</p>
+            <p className="text-[#F5F0E8]/60 font-medium">This room has been terminated</p>
           </div>
         </div>
       )}
@@ -346,60 +403,19 @@ export function Room() {
       {/* Next Stranger Countdown */}
       {nextStrangerCountdown !== null && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="text-center">
-            <p className="text-xl text-white mb-4">Stranger left</p>
-            <p className="text-white/60 mb-6">Finding next...</p>
-            <div className="text-4xl text-white font-bold mb-6">{nextStrangerCountdown}</div>
+          <div className="text-center px-8 py-12 bg-[#1A1A0F] rounded-2xl border border-[#F4600C]/30">
+            <p className="text-lg font-bold text-[#F5F0E8] mb-4 uppercase tracking-wider">Person Left</p>
+            <p className="text-[#F5F0E8]/60 font-medium mb-6">Finding next match in...</p>
+            <div className="text-6xl font-bold text-[#F4600C] mb-8">{nextStrangerCountdown}</div>
             <button
               onClick={() => setNextStrangerCountdown(null)}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+              className="px-6 py-2 bg-[#F4600C] hover:bg-[#E55100] text-[#1A1A0F] font-bold uppercase tracking-wider rounded-lg transition-all"
             >
-              Stay
+              Skip
             </button>
           </div>
         </div>
       )}
-
-      {/* Chat Panel */}
-      <ChatPanel
-        visible={chatVisible}
-        onClose={() => {
-          setChatVisible(false);
-          setUnreadCount(0);
-        }}
-        remoteStreams={webRTC.remoteStreams}
-        onSendMessage={(msg) => {
-          if (signalingsSend && roomId) {
-            signalingsSend({ ...msg, roomId });
-          }
-        }}
-        typingPeers={[]}
-      />
-
-      {/* Control Bar */}
-      <ControlBar
-        isMuted={webRTC.isMuted}
-        onToggleMute={webRTC.toggleMute}
-        isCameraOff={webRTC.isCameraOff}
-        onToggleCamera={webRTC.toggleCamera}
-        isScreenSharing={webRTC.isScreenSharing}
-        onStartScreenShare={webRTC.startScreenShare}
-        onStopScreenShare={webRTC.stopScreenShare}
-        onToggleChat={() => {
-          setChatVisible(!chatVisible);
-          if (!chatVisible) setUnreadCount(0);
-        }}
-        unreadCount={unreadCount}
-        onNextStranger={handleNextStranger}
-        onReport={() => {
-          if (peers.length > 0) {
-            setReportTarget(peers[0].ghostId);
-            setReportOpen(true);
-          }
-        }}
-        onSettings={() => setSettingsOpen(true)}
-        onHangup={handleHangup}
-      />
 
       {/* Modals */}
       <SettingsModal

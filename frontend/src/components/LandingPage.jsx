@@ -64,7 +64,7 @@ function Navbar() {
 // ─────────────────────────────────────────────────────────────
 // Hero Section
 // ─────────────────────────────────────────────────────────────
-function Hero() {
+function Hero({ onStartDrifting, onCreateRoom, isLoading }) {
 
   return (
     <section 
@@ -106,33 +106,33 @@ function Hero() {
         </h1>
       </div>
 
-      {/* ── Bottom row: user-type selectors | mascot emoji | 2024 badge ── */}
-      <div className="relative z-10 flex items-end justify-between w-full px-6 md:px-10 pb-10 mt-auto">
+      {/* ── Bottom row: CTA Buttons | Mascot | 2024 badge ── */}
+      <div className="relative z-10 flex items-end justify-between w-full px-6 md:px-10 pb-10 mt-auto gap-8">
 
-        {/* User Type Selectors — far left */}
-        <div className="flex flex-col gap-2 shrink-0">
-          {["Solo", "Friends", "Groups"].map((type, idx) => (
-            <button 
-              key={type}
-              disabled
-              className={`flex items-center justify-between px-6 py-3 rounded-full font-bold uppercase tracking-wider text-sm w-[160px] border border-[#1A1A0F] transition-all cursor-not-allowed opacity-70 ${
-                idx === 1 
-                  ? "bg-[#1A1A0F] text-[#F5F0E8]" 
-                  : "bg-transparent text-[#1A1A0F]"
-              }`}
-            >
-              {type}
-              {idx !== 1 && <ArrowRight className="w-4 h-4 ml-2 shrink-0" />}
-            </button>
-          ))}
+        {/* Left: CTA Buttons — positioned to the left of mascot */}
+        <div className="flex flex-col gap-3 shrink-0 z-30">
+          <button 
+            onClick={onStartDrifting}
+            disabled={isLoading}
+            className="px-6 py-3 bg-[#1A1A0F] hover:bg-[#333] disabled:opacity-50 text-[#F5F0E8] font-bold uppercase tracking-wider rounded-full transition-all text-sm md:text-base whitespace-nowrap"
+          >
+            {isLoading ? 'Connecting...' : 'Start Drifting'}
+          </button>
+          <button 
+            onClick={onCreateRoom}
+            disabled={isLoading}
+            className="px-6 py-3 bg-transparent border-2 border-[#1A1A0F] hover:bg-[#1A1A0F]/10 disabled:opacity-50 text-[#1A1A0F] font-bold uppercase tracking-wider rounded-full transition-all text-sm md:text-base whitespace-nowrap"
+          >
+            {isLoading ? 'Creating...' : 'Create Room'}
+          </button>
         </div>
 
-        {/* Mascot Character — bottom center */}
+        {/* Center: Mascot Character */}
         <MascotCharacter 
           className="absolute left-1/2 -translate-x-1/2 bottom-0 z-20 w-[280px] md:w-[340px] lg:w-[400px] pointer-events-none"
         />
 
-        {/* 2024 badge — far right */}
+        {/* Right: 2024 badge ── */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.2 }}
@@ -403,12 +403,12 @@ function Footer() {
 // ─────────────────────────────────────────────────────────────
 // Main LandingPage Component
 // ─────────────────────────────────────────────────────────────
-export default function LandingPage() {
+export default function LandingPage({ onStartDrifting, onCreateRoom, isLoading }) {
   // We apply global typography via container class text styling
   return (
     <div className="w-full min-h-screen font-sans selection:bg-[#F4600C] selection:text-[#F5F0E8] scroll-smooth origin-top">
       <Navbar />
-      <Hero />
+      <Hero onStartDrifting={onStartDrifting} onCreateRoom={onCreateRoom} isLoading={isLoading} />
       <WhySection />
       <StatsSection />
       <FeaturesSection />

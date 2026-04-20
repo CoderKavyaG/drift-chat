@@ -41,8 +41,12 @@ export function Landing() {
     <div className="relative w-full">
       <GhostIdentityBadge />
       
-      {/* Landing page component */}
-      <LandingPage />
+      {/* Landing page component with button handlers */}
+      <LandingPage 
+        onStartDrifting={handleStartDrifting}
+        onCreateRoom={handleCreateRoom}
+        isLoading={isLoading}
+      />
 
       {/* Modal overlay for room creation */}
       {showRoomModal && (
@@ -91,24 +95,7 @@ export function Landing() {
         </div>
       )}
 
-      {/* Extended CTA section */}
-      <div className="w-full bg-[#0a0a0f] py-12 px-6 flex flex-col items-center gap-6">
-        <button
-          onClick={handleStartDrifting}
-          disabled={isLoading}
-          className="px-8 py-3 bg-[#F4600C] hover:bg-[#E55100] disabled:opacity-50 text-white font-semibold rounded-lg transition"
-        >
-          {isLoading ? 'Connecting...' : 'Start Drifting'}
-        </button>
-
-        <button
-          onClick={handleCreateRoom}
-          disabled={isLoading}
-          className="px-8 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg transition disabled:opacity-50"
-        >
-          {isLoading ? 'Creating...' : 'Create Room'}
-        </button>
-      </div>
+      {/* CTA Buttons injected into Hero section via LandingPage overlay */}
     </div>
   );
 }
