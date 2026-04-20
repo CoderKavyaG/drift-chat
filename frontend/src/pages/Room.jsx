@@ -106,11 +106,6 @@ export function Room() {
       case 'peer-left':
         setPeers(prev => prev.filter(p => p.ghostId !== message.peerId));
         webRTC.handlePeerLeft(message.peerId);
-        
-        // Auto-next-stranger logic
-        if (roomModeRef.current === 'random' && peers.length <= 1) {
-          setNextStrangerCountdown(3);
-        }
         break;
 
       case 'offer':
@@ -143,7 +138,7 @@ export function Room() {
       default:
         break;
     }
-  }, [ghostId, peers.length, webRTC, navigate]);
+  }, [ghostId, webRTC, navigate]);
 
   const { send: signalingsSend, connectionState } = useSignaling(token, handleSignalingMessage);
   signalingRef.current = { send: signalingsSend };
@@ -157,6 +152,13 @@ export function Room() {
       });
     }
   }, [roomId, signalingsSend, connectionState]);
+
+  // Auto-next-stranger logic: trigger countdown when all peers leave
+  useEffect(() => {
+    if (roomModeRef.current === 'random' && peers.length === 0 && nextStrangerCountdown === null) {
+      setNextStrangerCountdown(3);
+    }
+  }, [peers.length]);
 
   // Auto-next-stranger countdown
   useEffect(() => {
