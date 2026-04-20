@@ -6,7 +6,13 @@ export function useSignaling(token, onMessage) {
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const reconnectAttemptsRef = useRef(0);
+  const onMessageRef = useRef(onMessage); // Store latest callback in ref
   const [connectionState, setConnectionState] = useState('disconnected');
+
+  // Update ref whenever onMessage changes (but don't trigger reconnect)
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   const disconnect = useCallback(() => {
     if (wsRef.current) {
@@ -38,8 +44,8 @@ export function useSignaling(token, onMessage) {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (onMessage) {
-            onMessage(message);
+          if (onMessageRef.current) {
+            onMessageRef.current(message);
           }
         } catch (err) {
           console.error('[WS] Message parse error:', err);
@@ -70,7 +76,7 @@ export function useSignaling(token, onMessage) {
       console.error('[WS] Connection error:', err);
       setConnectionState('error');
     }
-  }, [token, onMessage]);
+  }, [token]); // Only depend on token, not onMessage
 
   useEffect(() => {
     if (token) {
