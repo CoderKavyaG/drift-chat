@@ -8,24 +8,24 @@ function IconButton({ icon: Icon, label, onClick, isActive, isRed, isDisabled })
       <button
         onClick={onClick}
         disabled={isDisabled}
-        className={`relative w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+        className={`relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 shadow-lg hover:shadow-xl ${
           isDisabled
-            ? 'opacity-50 cursor-not-allowed'
+            ? 'opacity-50 cursor-not-allowed bg-[#F5F0E8]/5 text-[#F5F0E8]/50'
             : isRed
-            ? 'bg-red-600 hover:bg-red-700 text-[#F5F0E8]'
+            ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-900/50'
             : isActive
-            ? 'bg-[#F4600C] text-[#1A1A0F]'
-            : 'bg-[#F5F0E8]/10 hover:bg-[#F5F0E8]/20 text-[#F5F0E8]'
+            ? 'bg-[#F4600C] text-[#1A1A0F] shadow-orange-900/60'
+            : 'bg-[#2A2A1F]/80 hover:bg-[#3A3A2F] text-[#F5F0E8] border border-[#F5F0E8]/20'
         }`}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         title={label}
       >
-        <Icon className="w-5 h-5" />
+        <Icon className="w-6 h-6" />
       </button>
 
       {showTooltip && (
-        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-[#1A1A0F]/90 text-[#F5F0E8] text-xs px-3 py-1 rounded-lg whitespace-nowrap pointer-events-none border border-[#F4600C]/30 font-semibold">
+        <div className="absolute bottom-full mb-3 left-1/2 transform -translate-x-1/2 bg-[#1A1A0F]/95 text-[#F5F0E8] text-xs px-3 py-2 rounded-lg whitespace-nowrap pointer-events-none border border-[#F4600C]/40 font-semibold shadow-lg">
           {label}
         </div>
       )}
@@ -132,65 +132,24 @@ export function ControlBar({
   onHangup
 }) {
   return (
-    <div className="flex items-center justify-center gap-3 px-6 py-4">
-      <IconButton
-        icon={isMuted ? MicOffIcon : MicIcon}
-        label={isMuted ? 'Unmute' : 'Mute'}
-        onClick={onToggleMute}
-        isActive={!isMuted}
-      />
-
-      <IconButton
-        icon={isCameraOff ? CameraOffIcon : CameraIcon}
-        label={isCameraOff ? 'Turn on camera' : 'Turn off camera'}
-        onClick={onToggleCamera}
-        isActive={!isCameraOff}
-      />
-
-      <IconButton
-        icon={ScreenShareIcon}
-        label={isScreenSharing ? 'Stop screen share' : 'Share screen'}
-        onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare}
-        isActive={isScreenSharing}
-      />
-
+    <div className="flex items-center justify-center gap-4 px-4 py-4 bg-gradient-to-t from-[#1A1A0F]/80 to-[#2A2A1F]/40 backdrop-blur-md">
+      <IconButton icon={isMuted ? MicOffIcon : MicIcon} label={isMuted ? 'Unmute' : 'Mute'} onClick={onToggleMute} isActive={!isMuted} />
+      <IconButton icon={isCameraOff ? CameraOffIcon : CameraIcon} label={isCameraOff ? 'Turn on camera' : 'Turn off camera'} onClick={onToggleCamera} isActive={!isCameraOff} />
+      <IconButton icon={ScreenShareIcon} label={isScreenSharing ? 'Stop sharing' : 'Share screen'} onClick={isScreenSharing ? onStopScreenShare : onStartScreenShare} isActive={isScreenSharing} />
+      
       <div className="relative">
-        <IconButton
-          icon={ChatIcon}
-          label="Chat"
-          onClick={onToggleChat}
-        />
+        <IconButton icon={ChatIcon} label="Chat" onClick={onToggleChat} />
         {unreadCount > 0 && (
-          <div className="absolute -top-2 -right-2 w-5 h-5 bg-red-600 rounded-full flex items-center justify-center text-xs text-white font-bold">
+          <div className="absolute -top-3 -right-3 w-6 h-6 bg-red-600 rounded-full flex items-center justify-center text-xs text-white font-bold shadow-lg">
             {unreadCount > 9 ? '9+' : unreadCount}
           </div>
         )}
       </div>
 
-      <IconButton
-        icon={SkipIcon}
-        label="Next stranger"
-        onClick={onNextStranger}
-      />
-
-      <IconButton
-        icon={FlagIcon}
-        label="Report"
-        onClick={onReport}
-      />
-
-      <IconButton
-        icon={SettingsIcon}
-        label="Settings"
-        onClick={onSettings}
-      />
-
-      <IconButton
-        icon={HangupIcon}
-        label="Hang up"
-        onClick={onHangup}
-        isRed
-      />
+      <IconButton icon={SkipIcon} label="Next stranger" onClick={onNextStranger} />
+      <IconButton icon={FlagIcon} label="Report" onClick={onReport} />
+      <IconButton icon={SettingsIcon} label="Settings" onClick={onSettings} />
+      <IconButton icon={HangupIcon} label="Hang up" onClick={onHangup} isRed />
     </div>
   );
 }

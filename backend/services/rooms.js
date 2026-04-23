@@ -51,7 +51,10 @@ async function joinRoom(redis, roomId, ghostId) {
       peers = [];
     }
 
-    if (!peers.includes(ghostId) && peers.length < 2) {
+    const mode = roomData.mode || 'random';
+    const maxPeers = mode === 'random' ? 2 : 999; // 2 for 1-on-1, unlimited for groups
+
+    if (!peers.includes(ghostId) && peers.length < maxPeers) {
       peers.push(ghostId);
       await redis.hset(`room:${roomId}`, 'peers', JSON.stringify(peers));
     }

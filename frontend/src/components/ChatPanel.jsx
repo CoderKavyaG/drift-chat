@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typingPeers, isPermanent }) {
-  const [messages, setMessages] = useState([]);
+export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typingPeers, isPermanent, messages = [] }) {
   const [input, setInput] = useState('');
   const [typingDebounceTimer, setTypingDebounceTimer] = useState(null);
   const [showTyping, setShowTyping] = useState({});
@@ -43,7 +42,6 @@ export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typi
   const handleSend = () => {
     if (input.trim()) {
       onSendMessage({ type: 'chat-message', text: input });
-      setMessages(prev => [...prev, { text: input, local: true, timestamp: Date.now() }]);
       setInput('');
     }
   };
@@ -99,7 +97,7 @@ export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typi
           ) : (
             <>
               {messages.map((msg, idx) => (
-                <div key={idx} className={`flex ${msg.local ? 'justify-end' : 'justify-start'}`}>
+                <div key={`msg-${msg.timestamp}-${idx}`} className={`flex ${msg.local ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className={`max-w-[85%] px-4 py-2 rounded-lg text-sm font-medium break-words ${
                       msg.local
@@ -138,11 +136,11 @@ export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typi
             onChange={handleInput}
             onKeyPress={handleKeyPress}
             placeholder="Say something..."
-            className="flex-1 bg-[#F5F0E8]/5 border border-[#F5F0E8]/20 text-[#F5F0E8] placeholder-[#F5F0E8]/40 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-[#F4600C]/50 focus:border-[#F4600C]/50 transition-all"
+            className="flex-1 bg-[#1A1A0F] border border-[#F5F0E8]/30 text-[#F5F0E8] placeholder-[#F5F0E8]/50 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F4600C] focus:border-[#F4600C] transition-all"
           />
           <button
             onClick={handleSend}
-            className="bg-[#F4600C] hover:bg-[#E55100] text-[#1A1A0F] px-4 py-2 rounded-lg text-sm font-bold uppercase tracking-wider transition-all"
+            className="bg-[#F4600C] hover:bg-[#E55100] text-[#1A1A0F] px-4 py-2 rounded-lg text-sm font-bold uppercase tracking-wider transition-all shadow-lg hover:shadow-xl"
           >
             Send
           </button>

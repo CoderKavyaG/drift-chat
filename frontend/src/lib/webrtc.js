@@ -16,16 +16,31 @@ export function getICEServers() {
 
 export async function getUserMedia(constraints = {}) {
   const defaultConstraints = {
-    video: true,
+    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: true,
     ...constraints
   };
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia(defaultConstraints);
+    console.log('[WebRTC] getUserMedia success - tracks:', stream.getTracks().map(t => `${t.kind}:${t.enabled}`).join(', '));
     return stream;
   } catch (err) {
-    console.error('getUserMedia error:', err);
+    console.error('[WebRTC] getUserMedia error:', err.name, err.message);
+    
+    // Fallback: try with audio only if video fails
+    if (err.name === 'NotReadableError' || err.name === 'NotAllowedError') {
+      console.log('[WebRTC] Falling back to audio-only mode');
+      try {
+        const audioOnly = { audio: true, video: false };
+        const stream = await navigator.mediaDevices.getUserMedia(audioOnly);
+        console.log('[WebRTC] Audio-only fallback successful');
+        return stream;
+      } catch (audioErr) {
+        console.error('[WebRTC] Audio-only fallback failed:', audioErr.message);
+      }
+    }
+    
     throw err;
   }
 }

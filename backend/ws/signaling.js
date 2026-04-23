@@ -75,12 +75,13 @@ function initSignaling(server, redis) {
       console.log(`[WS] Disconnected: ${ghostName} (${ghostId})`);
       connections.delete(ghostId);
 
-      // Find and clean up room memberships
+      // BUG FIX 8: Properly broadcast peer-left to all peers in all rooms this ghost was in
       roomMembers.forEach((members, roomId) => {
         if (members.has(ghostId)) {
           members.delete(ghostId);
+          console.log(`[WS] Removed ${ghostId} from room ${roomId}`);
           
-          // Broadcast to remaining peers
+          // Broadcast peer-left to remaining peers
           members.forEach(peerId => {
             const peerWs = connections.get(peerId);
             if (peerWs && peerWs.readyState === 1) {
@@ -88,12 +89,14 @@ function initSignaling(server, redis) {
                 type: 'peer-left',
                 peerId: ghostId
               }));
+              console.log(`[WS] Sent peer-left for ${ghostId} to ${peerId}`);
             }
           });
 
           // Clean up empty rooms
           if (members.size === 0) {
             roomMembers.delete(roomId);
+            console.log(`[WS] Deleted empty room ${roomId}`);
           }
         }
       });
@@ -115,13 +118,13 @@ function initSignaling(server, redis) {
         await handleLeaveRoom(message, ws, redis, connections, roomMembers, ghostId);
         break;
       case 'offer':
-        handleRelay(message, connections, ghostId);
+        handleRelay(message, connections, roomMembers, ghostId);
         break;
       case 'answer':
-        handleRelay(message, connections, ghostId);
+        handleRelay(message, connections, roomMembers, ghostId);
         break;
       case 'ice-candidate':
-        handleRelay(message, connections, ghostId);
+        handleRelay(message, connections, roomMembers, ghostId);
         break;
       case 'chat-message':
         await handleChatMessage(message, ws, redis, connections, roomMembers, ghostId, ghostName);
@@ -130,13 +133,19 @@ function initSignaling(server, redis) {
         await handleReport(message, redis, connections, roomMembers, ghostId);
         break;
       case 'friend-request':
-        handleRelay(message, connections, ghostId, ghostName, avatarId);
+        handleRelay(message, connections, roomMembers, ghostId, ghostName, avatarId);
         break;
       case 'friend-accept':
         await handleFriendAccept(message, redis, connections, ghostId, ghostName, avatarId);
         break;
       case 'typing':
-        handleRelay(message, connections, ghostId);
+        handleRelay(message, connections, roomMembers, ghostId);
+        break;
+      case 'ping':
+        // BUG FIX 7: Handle heartbeat ping - send pong back
+        if (ws && ws.readyState === 1) {
+          ws.send(JSON.stringify({ type: 'pong' }));
+        }
         break;
       default:
         console.log('[WS] Unknown message type:', type);
@@ -215,20 +224,49 @@ function initSignaling(server, redis) {
     }
   }
 
-  function handleRelay(message, connections, ghostId, ghostName = null, avatarId = null) {
-    const { targetPeerId } = message;
+  // BUG FIX 7: Add relay guards - check target exists and is in same room
+  function handleRelay(message, connections, roomMembers, ghostId, ghostName = null, avatarId = null) {
+    const { targetPeerId, type } = message;
     if (!targetPeerId) return;
 
     const targetWs = connections.get(targetPeerId);
-    if (targetWs && targetWs.readyState === 1) {
-      const relayMessage = {
-        ...message,
-        fromPeerId: ghostId
-      };
-      if (ghostName) relayMessage.ghostName = ghostName;
-      if (avatarId) relayMessage.avatarId = avatarId;
-      targetWs.send(JSON.stringify(relayMessage));
+    
+    // Check if target exists
+    if (!targetWs) {
+      console.warn(`[WS] Relay failed: target ${targetPeerId} not connected (from ${ghostId}, type: ${type})`);
+      return;
     }
+
+    // Check if WebSocket is open
+    if (targetWs.readyState !== 1) {
+      console.warn(`[WS] Relay failed: target ${targetPeerId} WebSocket not open (state: ${targetWs.readyState}, from ${ghostId}, type: ${type})`);
+      return;
+    }
+
+    // For SDP and ICE messages, verify both peers are in the same room
+    if (['offer', 'answer', 'ice-candidate'].includes(type)) {
+      let inSameRoom = false;
+      for (const [roomId, members] of roomMembers) {
+        if (members.has(ghostId) && members.has(targetPeerId)) {
+          inSameRoom = true;
+          break;
+        }
+      }
+      
+      if (!inSameRoom) {
+        console.warn(`[WS] Relay blocked: ${ghostId} and ${targetPeerId} not in same room (type: ${type})`);
+        return;
+      }
+    }
+
+    console.log(`[WS] Relaying ${type} from ${ghostId} to ${targetPeerId}`);
+    const relayMessage = {
+      ...message,
+      fromPeerId: ghostId
+    };
+    if (ghostName) relayMessage.ghostName = ghostName;
+    if (avatarId) relayMessage.avatarId = avatarId;
+    targetWs.send(JSON.stringify(relayMessage));
   }
 
   async function handleChatMessage(message, ws, redis, connections, roomMembers, ghostId, ghostName) {
@@ -249,11 +287,13 @@ function initSignaling(server, redis) {
       timestamp: Date.now()
     };
 
-    // Broadcast to all peers including sender
+    // Broadcast to OTHER peers only (not sender)
     room.forEach(peerId => {
-      const peerWs = connections.get(peerId);
-      if (peerWs && peerWs.readyState === 1) {
-        peerWs.send(JSON.stringify(chatMessage));
+      if (peerId !== ghostId) {  // Exclude sender to prevent echo
+        const peerWs = connections.get(peerId);
+        if (peerWs && peerWs.readyState === 1) {
+          peerWs.send(JSON.stringify(chatMessage));
+        }
       }
     });
   }

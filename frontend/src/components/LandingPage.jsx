@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react"
 import { AnimatePresence, motion } from "framer-motion"
 import { ArrowRight, Plus, Minus, Sparkles, Send } from "lucide-react"
 import MascotCharacter from "./MascotCharacter"
+import { useIdentity } from "../hooks/useIdentity"
 
 // Color scheme for Tailwind arbitrary values
 const COLORS = {
@@ -11,17 +12,29 @@ const COLORS = {
   yellow: "#F5D000"
 }
 
+const AVATAR_COLORS = [
+  '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+  '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B88B', '#A9D08E',
+  '#FFC0CB', '#87CEEB', '#DDA0DD', '#FFB347', '#90EE90',
+  '#FF69B4', '#20B2AA', '#FFD700', '#FF7F50', '#6495ED'
+];
+
 // ─────────────────────────────────────────────────────────────
 // Navbar Component
 // ─────────────────────────────────────────────────────────────
 function Navbar() {
   const [scrolled, setScrolled] = useState(false)
+  const { ghostName, avatarId } = useIdentity()
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50)
     window.addEventListener("scroll", handleScroll)
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
+
+  const getAvatarColor = (id) => {
+    return AVATAR_COLORS[(id - 1) % AVATAR_COLORS.length];
+  };
 
   return (
     <header
@@ -49,13 +62,18 @@ function Navbar() {
           ))}
         </nav>
 
-        {/* CTA */}
-        <button
-          className="bg-[#1A1A0F] text-[#F5F0E8] px-6 py-2 rounded-full font-bold uppercase text-sm tracking-widest hover:bg-[#F4600C] hover:text-[#1A1A0F] transition-all duration-300 cursor-not-allowed opacity-70"
-          disabled
-        >
-          START DRIFTING
-        </button>
+        {/* Profile Badge */}
+        {ghostName && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-full bg-white/5 backdrop-blur-sm border border-white/10">
+            <div
+              className="w-6 h-6 rounded-full flex-shrink-0"
+              style={{ backgroundColor: getAvatarColor(avatarId) }}
+            />
+            <span className="text-sm font-medium text-[#F5F0E8] truncate max-w-[120px]">
+              {ghostName}
+            </span>
+          </div>
+        )}
       </div>
     </header>
   )
@@ -132,14 +150,14 @@ function Hero({ onStartDrifting, onCreateRoom, isLoading }) {
           className="absolute left-1/2 -translate-x-1/2 bottom-0 z-20 w-[280px] md:w-[340px] lg:w-[400px] pointer-events-none"
         />
 
-        {/* Right: 2024 badge ── */}
+        {/* Right: 2026 badge ── */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 0.2 }}
           transition={{ duration: 1, delay: 0.5 }}
           className="font-['Anton'] text-[#F5F0E8] text-[8vw] leading-none select-none shrink-0"
         >
-          2024
+          2026
         </motion.div>
 
       </div>

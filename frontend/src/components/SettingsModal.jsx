@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { enumerateDevices } from '../lib/webrtc';
 
 export function SettingsModal({ isOpen, onClose, onCameraChange, onAudioChange, localStream }) {
@@ -8,6 +8,7 @@ export function SettingsModal({ isOpen, onClose, onCameraChange, onAudioChange, 
   const [selectedCamera, setSelectedCamera] = useState('');
   const [selectedMicrophone, setSelectedMicrophone] = useState('');
   const [selectedSpeaker, setSelectedSpeaker] = useState('');
+  const previewVideoRef = useRef(null);
 
   useEffect(() => {
     const loadDevices = async () => {
@@ -21,6 +22,12 @@ export function SettingsModal({ isOpen, onClose, onCameraChange, onAudioChange, 
       loadDevices();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (previewVideoRef.current && localStream) {
+      previewVideoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
 
   const handleCameraChange = (deviceId) => {
     setSelectedCamera(deviceId);
@@ -107,11 +114,11 @@ export function SettingsModal({ isOpen, onClose, onCameraChange, onAudioChange, 
               </label>
               <div className="w-full aspect-video bg-[#111118] rounded-lg overflow-hidden ring-1 ring-white/10">
                 <video
+                  ref={previewVideoRef}
                   autoPlay
                   muted
                   playsInline
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  srcObject={localStream}
                 />
               </div>
             </div>

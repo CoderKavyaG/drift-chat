@@ -21,13 +21,22 @@ const AVATAR_COLORS = [
 ];
 
 export function Room() {
+  // Context/hooks
   const { roomId: routeRoomId } = useParams();
   const navigate = useNavigate();
-  const { token, ghostId, ghostName, avatarId } = useIdentity();
+  const { token, ghostId, ghostName, avatarId, isLoaded } = useIdentity();
+  
+  // Refs - MUST BE FIRST (before hooks that use them)
+  const signalingRef = useRef(null);
+  const roomModeRef = useRef('random');
+  const waitingVideoRef = useRef(null);
+  const streamInitializedRef = useRef(false);
 
+  // State
   const [roomId, setRoomId] = useState(routeRoomId || null);
   const [roomCode, setRoomCode] = useState(null);
   const [peers, setPeers] = useState([]);
+  const [chatMessages, setChatMessages] = useState([]);
   const [chatVisible, setChatVisible] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -37,29 +46,179 @@ export function Room() {
   const [nextStrangerCountdown, setNextStrangerCountdown] = useState(null);
   const [loading, setLoading] = useState(!routeRoomId);
 
-  const webRTC = useWebRTC();
-  const signalingRef = useRef(null);
-  const roomModeRef = useRef('random');
+  // Call WebRTC hook with signalingRef (now signalingRef is declared)
+  const webRTC = useWebRTC(signalingRef);
 
-  const getAvatarColor = (id) => {
-    return AVATAR_COLORS[(id - 1) % AVATAR_COLORS.length];
-  };
-
-  // Initialize local stream on mount
-  useEffect(() => {
-    const initStream = async () => {
-      const stream = await webRTC.initializeLocalStream();
-      if (!stream) {
-        alert('Camera/microphone access denied');
-        navigate('/');
-      }
-    };
-    initStream();
+  // Callbacks - ALL THIRD (must come before effects that use them)
+  const handleNextStranger = useCallback(async () => {
+    webRTC.hangUp();
+    try {
+      const result = await joinRoom('random');
+      setRoomId(result.roomId);
+      setRoomCode(result.roomCode);
+      setPeers(result.peers || []);
+      navigate(`/room/${result.roomId}`);
+    } catch (err) {
+      console.error('Error joining new room:', err);
+      navigate('/');
+    }
   }, [webRTC, navigate]);
 
-  // Join room
+  const handleHangup = useCallback(() => {
+    webRTC.hangUp();
+    if (roomId && signalingRef.current?.send) {
+      signalingRef.current.send({ type: 'leave-room', roomId });
+    }
+    navigate('/');
+  }, [webRTC, roomId, navigate]);
+
+  const handleReport = useCallback((reportData) => {
+    if (signalingRef.current?.send && reportTarget) {
+      signalingRef.current.send({
+        type: 'report',
+        targetPeerId: reportTarget,
+        reason: reportData.reason,
+        roomId
+      });
+    }
+    setReportOpen(false);
+  }, [reportTarget, roomId]);
+
+  const handleSignalingMessage = useCallback((message) => {
+    switch (message.type) {
+      case 'room-joined':
+        // Deduplicate peers list from server
+        const uniquePeers = Array.from(new Map((message.peers || []).map(p => [p.ghostId, p])).values());
+        setPeers(uniquePeers);
+        console.log('[Room] Room joined with peers:', uniquePeers.map(p => p.ghostId));
+        uniquePeers.forEach(peer => {
+          // BUG FIX 4: Deterministic initiator - peer with SMALLER ghostId initiates
+          const isInitiator = ghostId < peer.ghostId;
+          console.log('[Room] Peer connection initiator rule: myGhostId=', ghostId, 'theirGhostId=', peer.ghostId, 'isInitiator=', isInitiator);
+          if (webRTC && signalingRef.current) {
+            webRTC.createPeerConnection(peer.ghostId, isInitiator);
+          }
+        });
+        break;
+
+      case 'peer-joined':
+        setPeers(prev => {
+          // Check if peer already exists to avoid duplicates
+          const exists = prev.some(p => p.ghostId === message.peerId);
+          if (exists) {
+            console.log('[Room] Peer already in list, skipping duplicate:', message.peerId);
+            return prev;
+          }
+          return [...prev, {
+            ghostId: message.peerId,
+            ghostName: message.ghostName,
+            avatarId: message.avatarId
+          }];
+        });
+        
+        // BUG FIX 4: Deterministic initiator - peer with SMALLER ghostId initiates
+        const isInitiator = ghostId < message.peerId;
+        console.log('[Room] Peer-joined initiator rule: myGhostId=', ghostId, 'theirGhostId=', message.peerId, 'isInitiator=', isInitiator);
+        if (webRTC && signalingRef.current) {
+          webRTC.createPeerConnection(message.peerId, isInitiator);
+        }
+        break;
+
+      case 'peer-left':
+        setPeers(prev => prev.filter(p => p.ghostId !== message.peerId));
+        webRTC.handlePeerLeft(message.peerId);
+        break;
+
+      case 'offer':
+        webRTC.handleOffer(message.fromPeerId, message.sdp);
+        break;
+
+      case 'answer':
+        webRTC.handleAnswer(message.fromPeerId, message.sdp);
+        break;
+
+      case 'ice-candidate':
+        webRTC.handleIceCandidate(message.fromPeerId, message.candidate);
+        break;
+
+      case 'chat-message':
+        setChatMessages(prev => [...prev, {
+          text: message.text,
+          local: false,
+          fromPeerId: message.fromPeerId,
+          ghostName: message.ghostName,
+          timestamp: Date.now()
+        }]);
+        if (message.fromPeerId !== ghostId) {
+          setUnreadCount(prev => prev + 1);
+        }
+        break;
+
+      case 'room-killed':
+        setRoomKilledOverlay(true);
+        setTimeout(() => navigate('/'), 3000);
+        break;
+
+      case 'typing':
+        break;
+
+      default:
+        break;
+    }
+  }, [ghostId, webRTC, navigate]);
+
+  // Signaling hook
+  const { send: signalingsSend, connectionState } = useSignaling(token, handleSignalingMessage);
+  
+  // Update signaling ref only when send function changes
+  useEffect(() => {
+    signalingRef.current = { send: signalingsSend };
+  }, [signalingsSend]);
+
+  // Effects - ALL FOURTH
+  useEffect(() => {
+    // Guard MUST be synchronous and checked FIRST
+    if (streamInitializedRef.current) {
+      console.log('[Room] Stream already initialized, skipping');
+      return;
+    }
+    
+    // Mark as initializing IMMEDIATELY to prevent race conditions
+    streamInitializedRef.current = 'initializing';
+    
+    const initStream = async () => {
+      console.log('[Room] Initializing local stream BEFORE room join');
+      try {
+        const stream = await webRTC.initializeLocalStream();
+        if (!stream) {
+          console.error('[Room] Failed to get stream, camera/microphone denied');
+          streamInitializedRef.current = false; // Reset on failure to allow retry
+          alert('Camera/microphone access denied');
+          navigate('/');
+        } else {
+          if (waitingVideoRef.current && peers.length === 0) {
+            waitingVideoRef.current.srcObject = stream;
+          }
+          streamInitializedRef.current = true; // Mark as initialized
+          console.log('[Room] Local stream initialization complete');
+        }
+      } catch (err) {
+        console.error('[Room] Stream initialization error:', err);
+        streamInitializedRef.current = false; // Reset on failure
+      }
+    };
+    
+    if (isLoaded) {
+      initStream();
+    }
+  }, [isLoaded, navigate, webRTC]);
+
   useEffect(() => {
     const joinRoomFn = async () => {
+      if (!isLoaded || !token) {
+        return;
+      }
+
       if (!roomId && !routeRoomId) {
         try {
           const result = await joinRoom('random');
@@ -77,73 +236,8 @@ export function Room() {
       }
     };
     joinRoomFn();
-  }, [roomId, routeRoomId, navigate]);
+  }, [roomId, routeRoomId, navigate, isLoaded, token]);
 
-  // Signaling message handler
-  const handleSignalingMessage = useCallback((message) => {
-    switch (message.type) {
-      case 'room-joined':
-        setPeers(message.peers || []);
-        // Create peer connections for each existing peer
-        message.peers?.forEach(peer => {
-          if (webRTC && signalingRef.current) {
-            webRTC.createPeerConnection(peer.ghostId, true, signalingRef.current);
-          }
-        });
-        break;
-
-      case 'peer-joined':
-        setPeers(prev => [...prev, {
-          ghostId: message.peerId,
-          ghostName: message.ghostName,
-          avatarId: message.avatarId
-        }]);
-        if (webRTC && signalingRef.current) {
-          webRTC.createPeerConnection(message.peerId, true, signalingRef.current);
-        }
-        break;
-
-      case 'peer-left':
-        setPeers(prev => prev.filter(p => p.ghostId !== message.peerId));
-        webRTC.handlePeerLeft(message.peerId);
-        break;
-
-      case 'offer':
-        webRTC.handleOffer(message.fromPeerId, message.sdp, signalingRef.current);
-        break;
-
-      case 'answer':
-        webRTC.handleAnswer(message.fromPeerId, message.sdp);
-        break;
-
-      case 'ice-candidate':
-        webRTC.handleIceCandidate(message.fromPeerId, message.candidate);
-        break;
-
-      case 'chat-message':
-        if (message.fromPeerId !== ghostId) {
-          setUnreadCount(prev => prev + 1);
-        }
-        break;
-
-      case 'room-killed':
-        setRoomKilledOverlay(true);
-        setTimeout(() => navigate('/'), 3000);
-        break;
-
-      case 'typing':
-        // Handle typing indicator
-        break;
-
-      default:
-        break;
-    }
-  }, [ghostId, webRTC, navigate]);
-
-  const { send: signalingsSend, connectionState } = useSignaling(token, handleSignalingMessage);
-  signalingRef.current = { send: signalingsSend };
-
-  // Join room via signaling
   useEffect(() => {
     if (roomId && signalingsSend && connectionState === 'connected') {
       signalingsSend({
@@ -153,14 +247,12 @@ export function Room() {
     }
   }, [roomId, signalingsSend, connectionState]);
 
-  // Auto-next-stranger logic: trigger countdown when all peers leave
   useEffect(() => {
     if (roomModeRef.current === 'random' && peers.length === 0 && nextStrangerCountdown === null) {
       setNextStrangerCountdown(3);
     }
   }, [peers.length]);
 
-  // Auto-next-stranger countdown
   useEffect(() => {
     if (nextStrangerCountdown === null) return;
 
@@ -175,56 +267,44 @@ export function Room() {
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [nextStrangerCountdown]);
+  }, [nextStrangerCountdown, handleNextStranger]);
 
-  const handleNextStranger = useCallback(async () => {
-    webRTC.hangUp();
-    try {
-      const result = await joinRoom('random');
-      setRoomId(result.roomId);
-      setRoomCode(result.roomCode);
-      setPeers(result.peers || []);
-      navigate(`/room/${result.roomId}`);
-    } catch (err) {
-      console.error('Error joining new room:', err);
-      navigate('/');
-    }
-  }, [webRTC, navigate]);
-
-  const handleHangup = useCallback(() => {
-    webRTC.hangUp();
-    if (roomId && signalingsSend) {
-      signalingsSend({ type: 'leave-room', roomId });
-    }
-    navigate('/');
-  }, [webRTC, roomId, signalingsSend, navigate]);
-
-  const handleReport = useCallback((reportData) => {
-    if (signalingsSend && reportTarget) {
-      signalingsSend({
-        type: 'report',
-        targetPeerId: reportTarget,
-        reason: reportData.reason,
-        roomId
-      });
-    }
-    setReportOpen(false);
-  }, [signalingsSend, reportTarget, roomId]);
-
-  // Layout calculation
+  // Layout calculation - supports 1-on-1 and group calls
   const remoteCount = peers.length;
   let gridCols = 1;
   let gridRows = 1;
+  let videoGridClass = 'grid-cols-1';
+  let isGroupCall = remoteCount > 1; // More than 1 remote = group call
 
-  if (remoteCount === 1) {
+  if (remoteCount === 0) {
+    // Waiting for peer
+    gridCols = 1;
+    gridRows = 1;
+  } else if (remoteCount === 1) {
+    // 1-on-1 call: 2 cols (local + 1 remote)
     gridCols = 2;
     gridRows = 1;
+    videoGridClass = 'grid-cols-2';
   } else if (remoteCount === 2) {
+    // 1-on-1 with recorder/observer: 3 cols
     gridCols = 3;
     gridRows = 1;
-  } else if (remoteCount >= 3) {
+    videoGridClass = 'grid-cols-3';
+  } else if (remoteCount === 3) {
+    // Group: 2x2 grid
     gridCols = 2;
     gridRows = 2;
+    videoGridClass = 'grid-cols-2 grid-rows-2';
+  } else if (remoteCount <= 6) {
+    // Group: 3 cols x 2-3 rows
+    gridCols = 3;
+    gridRows = Math.ceil((remoteCount + 1) / 3); // +1 for local
+    videoGridClass = 'grid-cols-3';
+  } else {
+    // Large group: 4 cols
+    gridCols = 4;
+    gridRows = Math.ceil((remoteCount + 1) / 4);
+    videoGridClass = 'grid-cols-4';
   }
 
   if (loading) {
@@ -273,17 +353,18 @@ export function Room() {
         </div>
       </div>
 
-      {/* MAIN CONTENT: Two-column layout */}
-      <div className="flex-1 flex overflow-hidden gap-0">
+      {/* MAIN CONTENT: Layout adapts based on 1-on-1 or group */}
+      <div className={`flex-1 flex overflow-hidden gap-0 ${isGroupCall ? 'flex-col' : ''}`}>
         
-        {/* LEFT: Video Grid */}
-        <div className="flex-1 overflow-hidden p-4 bg-[#1A1A0F] flex flex-col">
+        {/* LEFT/TOP: Video Grid */}
+        <div className={`${isGroupCall ? 'w-full' : 'flex-1'} overflow-hidden p-4 bg-[#1A1A0F] flex flex-col`}>
           {remoteCount === 0 ? (
             // Waiting state
             <div className="w-full h-full flex items-center justify-center">
               <div className="relative w-full max-w-md aspect-video rounded-2xl overflow-hidden ring-2 ring-[#F4600C]/30 bg-black">
                 {webRTC.localStreamRef.current && (
                   <video
+                    ref={waitingVideoRef}
                     autoPlay
                     muted
                     playsInline
@@ -293,7 +374,6 @@ export function Room() {
                       objectFit: 'cover',
                       transform: 'scaleX(-1)'
                     }}
-                    srcObject={webRTC.localStreamRef.current}
                   />
                 )}
 
@@ -301,28 +381,23 @@ export function Room() {
                   <div className="text-center">
                     <p className="text-[#F5F0E8] font-bold mb-3 uppercase tracking-wider">Waiting for someone...</p>
                     <div className="flex justify-center gap-2">
-                      <div className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" />
-                      <div className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                      <div className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" style={{ animationDelay: '0.4s' }} />
+                      {[0, 0.2, 0.4].map((delay, idx) => (
+                        <div key={`bounce-${idx}`} className="w-2 h-2 bg-[#F4600C] rounded-full animate-bounce" style={{ animationDelay: `${delay}s` }} />
+                      ))}
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           ) : (
-            // Video grid with responsive layout
+            // Video grid with responsive layout - supports 1-on-1 and group calls
             <div
-              className="w-full h-full gap-3"
-              style={{
-                display: 'grid',
-                gridTemplateColumns: `repeat(${Math.min(2, gridCols)}, 1fr)`,
-                gridTemplateRows: `repeat(${gridRows}, 1fr)`,
-                gridAutoFlow: 'dense'
-              }}
+              className={`w-full h-full gap-3 grid ${videoGridClass}`}
             >
               {/* Local video */}
               {webRTC.localStreamRef.current && (
                 <VideoTile
+                  key={`local-${ghostId}`}
                   stream={webRTC.localStreamRef.current}
                   ghostName={ghostName}
                   avatarId={avatarId}
@@ -333,36 +408,43 @@ export function Room() {
               )}
 
               {/* Remote videos */}
-              {peers.map(peer => (
+              {peers.filter(peer => peer && peer.ghostId).map(peer => (
                 <VideoTile
-                  key={peer.ghostId}
+                  key={`remote-${peer.ghostId}`}
                   stream={webRTC.remoteStreams.get(peer.ghostId)}
                   ghostName={peer.ghostName}
                   avatarId={peer.avatarId}
                   isMuted={false}
                   isLocal={false}
                   isVideoOff={false}
+                  isAudioActive={webRTC.peerAudioActive.get(peer.ghostId) || false}
                 />
               ))}
             </div>
           )}
         </div>
 
-        {/* RIGHT: Chat Panel */}
-        <div className="w-80 border-l border-[#F4600C]/20 flex flex-col bg-[#0a0a0f]">
-          <ChatPanel
-            visible={true}
-            onClose={() => setChatVisible(false)}
-            remoteStreams={webRTC.remoteStreams}
-            onSendMessage={(msg) => {
-              if (signalingsSend && roomId) {
-                signalingsSend({ ...msg, roomId });
-              }
-            }}
-            typingPeers={[]}
-            isPermanent={true}
-          />
-        </div>
+        {/* RIGHT: Chat Panel - Only show for 1-on-1 calls */}
+        {!isGroupCall && (
+          <div className="w-80 border-l border-[#F4600C]/20 flex flex-col bg-[#0a0a0f]">
+            <ChatPanel
+              visible={true}
+              onClose={() => setChatVisible(false)}
+              remoteStreams={webRTC.remoteStreams}
+              onSendMessage={(msg) => {
+                if (signalingsSend && roomId && msg.type === 'chat-message') {
+                  setChatMessages(prev => [...prev, { ...msg, local: true, timestamp: Date.now() }]);
+                  signalingsSend({ ...msg, roomId });
+                } else if (signalingsSend && roomId) {
+                  signalingsSend({ ...msg, roomId });
+                }
+              }}
+              typingPeers={[]}
+              isPermanent={true}
+              messages={chatMessages}
+            />
+          </div>
+        )}
       </div>
 
       {/* BOTTOM: Control Bar */}
