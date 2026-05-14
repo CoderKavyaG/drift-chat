@@ -98,14 +98,14 @@ export function Room() {
         // BUG FIX 10: Wait for local stream before creating peer connections
         const ensureStreamThenCreatePeer = async () => {
           let attempts = 0;
-          while (!webRTC.localStreamRef.current && attempts < 50) {
+          while (!webRTC.localStreamRef.current && attempts < 100) {
             await new Promise(r => setTimeout(r, 100));
             attempts++;
           }
           if (webRTC.localStreamRef.current) {
             console.log('[Room] Local stream ready, creating peer connections');
           } else {
-            console.warn('[Room] Local stream not available after waiting');
+            console.warn('[Room] Local stream not available after', attempts * 100, 'ms - creating peer connections anyway');
           }
           
           uniquePeers.forEach(peer => {
@@ -125,7 +125,7 @@ export function Room() {
         // BUG FIX 10: Wait for local stream before creating peer connections
         const ensureStreamForNewPeer = async () => {
           let attempts = 0;
-          while (!webRTC.localStreamRef.current && attempts < 50) {
+          while (!webRTC.localStreamRef.current && attempts < 100) {
             await new Promise(r => setTimeout(r, 100));
             attempts++;
           }
@@ -474,9 +474,9 @@ export function Room() {
           )}
         </div>
 
-        {/* RIGHT: Chat Panel - Only show for 1-on-1 calls */}
-        {!isGroupCall && (
-          <div className="w-80 border-l border-[#F4600C]/20 flex flex-col bg-[#0a0a0f]">
+        {/* RIGHT: Chat Panel - Only show for 1-on-1 calls with peers */}
+        {!isGroupCall && remoteCount > 0 && (
+          <div className="w-80 border-l border-[#F4600C]/20 flex flex-col bg-[#0a0a0f] min-h-0">
             <ChatPanel
               visible={true}
               onClose={() => setChatVisible(false)}
