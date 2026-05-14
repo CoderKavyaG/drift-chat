@@ -94,37 +94,65 @@ export function Room() {
         const uniquePeers = Array.from(new Map((message.peers || []).map(p => [p.ghostId, p])).values());
         setPeers(uniquePeers);
         console.log('[Room] Room joined with peers:', uniquePeers.map(p => p.ghostId));
-        uniquePeers.forEach(peer => {
-          // BUG FIX 4: Deterministic initiator - peer with SMALLER ghostId initiates
-          const isInitiator = ghostId < peer.ghostId;
-          console.log('[Room] Peer connection initiator rule: myGhostId=', ghostId, 'theirGhostId=', peer.ghostId, 'isInitiator=', isInitiator);
-          if (webRTC && signalingRef.current) {
-            webRTC.createPeerConnection(peer.ghostId, isInitiator);
+        
+        // BUG FIX 10: Wait for local stream before creating peer connections
+        const ensureStreamThenCreatePeer = async () => {
+          let attempts = 0;
+          while (!webRTC.localStreamRef.current && attempts < 50) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
           }
-        });
+          if (webRTC.localStreamRef.current) {
+            console.log('[Room] Local stream ready, creating peer connections');
+          } else {
+            console.warn('[Room] Local stream not available after waiting');
+          }
+          
+          uniquePeers.forEach(peer => {
+            // BUG FIX 4: Deterministic initiator - peer with SMALLER ghostId initiates
+            const isInitiator = ghostId < peer.ghostId;
+            console.log('[Room] Peer connection initiator rule: myGhostId=', ghostId, 'theirGhostId=', peer.ghostId, 'isInitiator=', isInitiator);
+            if (webRTC && signalingRef.current) {
+              webRTC.createPeerConnection(peer.ghostId, isInitiator);
+            }
+          });
+        };
+        
+        ensureStreamThenCreatePeer();
         break;
 
       case 'peer-joined':
-        setPeers(prev => {
-          // Check if peer already exists to avoid duplicates
-          const exists = prev.some(p => p.ghostId === message.peerId);
-          if (exists) {
-            console.log('[Room] Peer already in list, skipping duplicate:', message.peerId);
-            return prev;
+        // BUG FIX 10: Wait for local stream before creating peer connections
+        const ensureStreamForNewPeer = async () => {
+          let attempts = 0;
+          while (!webRTC.localStreamRef.current && attempts < 50) {
+            await new Promise(r => setTimeout(r, 100));
+            attempts++;
           }
-          return [...prev, {
-            ghostId: message.peerId,
-            ghostName: message.ghostName,
-            avatarId: message.avatarId
-          }];
-        });
+          
+          setPeers(prev => {
+            // Check if peer already exists to avoid duplicates
+            const exists = prev.some(p => p.ghostId === message.peerId);
+            if (exists) {
+              console.log('[Room] Peer already in list, skipping duplicate:', message.peerId);
+              return prev;
+            }
+            return [...prev, {
+              ghostId: message.peerId,
+              ghostName: message.ghostName,
+              avatarId: message.avatarId
+            }];
+          });
+          
+          // BUG FIX 4: Deterministic initiator - peer with SMALLER ghostId initiates
+          const isInitiator = ghostId < message.peerId;
+          console.log('[Room] Peer-joined initiator rule: myGhostId=', ghostId, 'theirGhostId=', message.peerId, 'isInitiator=', isInitiator);
+          if (webRTC && signalingRef.current) {
+            webRTC.createPeerConnection(message.peerId, isInitiator);
+          }
+        };
         
-        // BUG FIX 4: Deterministic initiator - peer with SMALLER ghostId initiates
-        const isInitiator = ghostId < message.peerId;
-        console.log('[Room] Peer-joined initiator rule: myGhostId=', ghostId, 'theirGhostId=', message.peerId, 'isInitiator=', isInitiator);
-        if (webRTC && signalingRef.current) {
-          webRTC.createPeerConnection(message.peerId, isInitiator);
-        }
+        ensureStreamForNewPeer();
         break;
 
       case 'peer-left':
