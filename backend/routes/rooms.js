@@ -21,21 +21,23 @@ router.post('/join', async (req, res) => {
       const waitingRoom = await roomsService.findWaitingRoom(req.redis);
       
       if (waitingRoom) {
-        console.log(`[API] Joining existing room: ${waitingRoom.roomId}`);
+        console.log(`[API] Joining existing waiting room: ${waitingRoom.roomId}`);
         roomId = waitingRoom.roomId;
         roomCodeResult = waitingRoom.roomCode;
-        peers = []; // Don't return peers yet - WebSocket join-room will handle it
       } else {
         const newRoom = await roomsService.createRoom(req.redis, 'random');
         console.log(`[API] Created new room: ${newRoom.roomId}`);
         roomId = newRoom.roomId;
         roomCodeResult = newRoom.roomCode;
-        peers = []; // Don't return peers yet - WebSocket join-room will handle it
       }
       
-      // CRITICAL: Don't add peer here - let WebSocket join-room handle peer management
-      // This prevents race conditions between REST and WebSocket layers
-      console.log(`[API] Room ${roomId} ready for WebSocket join (peers managed via WebSocket)`);
+      // CRITICAL: Add peer to room NOW so 2nd device can find it
+      // This ensures room pairing happens at REST layer
+      // findWaitingRoom() looks for rooms with 1 peer - it won't find 0-peer rooms!
+      console.log(`[API] Adding ${ghostName} (${ghostId}) to room ${roomId}`);
+      const joinResult = await roomsService.joinRoom(req.redis, roomId, ghostId);
+      peers = joinResult.peers;
+      console.log(`[API] Room ${roomId} now has ${peers.length} peer(s): ${JSON.stringify(peers)}`);
     } else if (mode === 'group') {
       if (roomCode) {
         // Join existing room by code
