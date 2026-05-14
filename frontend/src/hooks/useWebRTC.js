@@ -40,31 +40,43 @@ export function useWebRTC(signalingRef) {
       const username = import.meta.env.VITE_TURN_USERNAME;
       const credential = import.meta.env.VITE_TURN_CREDENTIAL;
       
+      // Parse URL to extract host and port
+      let host = turnUrl;
+      if (turnUrl.startsWith('turn:')) {
+        host = turnUrl.substring(5);
+      } else if (turnUrl.startsWith('turns:')) {
+        host = turnUrl.substring(6);
+      }
+      
+      // Build TURN config based on whether we have auth credentials
       if (username && credential) {
-        // Parse URL to extract host:port
-        let host = turnUrl;
-        if (turnUrl.startsWith('turn:')) {
-          host = turnUrl.substring(5);
-        } else if (turnUrl.startsWith('turns:')) {
-          host = turnUrl.substring(6);
-        }
+        // Authenticated TURN (e.g., metered.ca) - use different ports per transport
+        // Parse to check if port is specified
+        const hasPort = host.includes(':');
+        const [hostOnly, port] = hasPort ? host.split(':') : [host, '443'];
         
-        // Format URLs for multiple transports
-        // College WiFi typically blocks UDP, so TCP is essential
         servers.push({
           urls: [
-            `turn:${host}?transport=udp`,
-            `turn:${host}?transport=tcp`,
-            `turns:${host}?transport=tcp`  // TLS over TCP (port 443)
+            `turn:${hostOnly}:3478?transport=udp`,      // UDP on standard TURN port
+            `turn:${hostOnly}:80?transport=tcp`,         // TCP on HTTP port
+            `turns:${hostOnly}:${port}?transport=tcp`    // TLS on specified port (443)
           ],
           username,
           credential
         });
         
-        console.log('[WebRTC] Added TURN servers:', {
-          urls: [`turn:${host} (udp/tcp)`, `turns:${host} (tcp)`],
+        console.log('[WebRTC] Added authenticated TURN servers:', {
+          host: hostOnly,
+          ports: ['3478 (UDP)', '80 (TCP)', `${port} (TLS)`],
           username
         });
+      } else {
+        // Public/free TURN (e.g., Google) - no auth needed
+        servers.push({
+          urls: [`turn:${host}`, `turns:${host}`]
+        });
+        
+        console.log('[WebRTC] Added public TURN server (no auth):', host);
       }
     }
     
