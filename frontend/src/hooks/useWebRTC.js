@@ -25,7 +25,31 @@ export function useWebRTC(signalingRef) {
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
       { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' }
+      { urls: 'stun:stun4.l.google.com:19302' },
+      // Free Open Relay TURN servers (metered.ca open relay project)
+      // These are the fallback that makes cross-network calls work without a paid TURN server.
+      // STUN-only fails when both peers are behind different NATs (e.g. two different WiFi networks).
+      { urls: 'stun:openrelay.metered.ca:80' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turns:openrelay.metered.ca:443',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
     ];
     
     // Add custom STUN if provided
@@ -821,6 +845,8 @@ export function useWebRTC(signalingRef) {
     toggleCamera,
     startScreenShare,
     stopScreenShare,
+    changeCamera,   // was defined but never returned — caused TypeError in SettingsModal
+    changeAudio,    // same
     hangUp,
   };
 }
