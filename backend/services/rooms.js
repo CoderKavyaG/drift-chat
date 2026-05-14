@@ -29,6 +29,12 @@ async function createRoom(redis, mode) {
     await redis.set(`roomcode:${roomCode}`, roomId);
     await redis.expire(`roomcode:${roomCode}`, 7200);
     
+    // For random rooms, add to waiting_rooms set so they can be found quickly
+    if (mode === 'random') {
+      await redis.sadd('waiting_rooms', roomId);
+      await redis.expire('waiting_rooms', 7200);
+    }
+    
     console.log(`[ROOMS] Created new ${mode} room: ${roomId} (code: ${roomCode})`);
     return { roomId, roomCode };
   } catch (err) {
@@ -72,25 +78,32 @@ async function joinRoom(redis, roomId, ghostId) {
 
 async function findWaitingRoom(redis) {
   try {
-    const cursor = await redis.scan(0, 'MATCH', 'room:*');
-    const keys = cursor[1];
-
-    for (const key of keys) {
-      const roomData = await redis.hgetall(key);
-      if (roomData.status === 'waiting' && roomData.mode === 'random') {
+    // Use a more direct approach: maintain a "waiting_rooms" set in Redis
+    // This is more efficient and reliable than scanning all room keys
+    const waitingRoomIds = await redis.smembers('waiting_rooms');
+    
+    for (const roomId of waitingRoomIds) {
+      const roomData = await redis.hgetall(`room:${roomId}`);
+      if (roomData && roomData.roomCode && roomData.status === 'waiting' && roomData.mode === 'random') {
         let peers = [];
         try {
           peers = JSON.parse(roomData.peers || '[]');
         } catch (e) {
           peers = [];
         }
+        
+        // Found a room with exactly 1 peer waiting
         if (peers.length === 1) {
-          const roomId = key.replace('room:', '');
-          console.log(`[ROOMS] Found waiting room ${roomId} with ${peers.length} peer(s)`);
-          return { roomId, roomCode: roomData.roomCode };
+          // Try to atomically remove from waiting_rooms set
+          const removed = await redis.srem('waiting_rooms', roomId);
+          if (removed) {
+            console.log(`[ROOMS] Found waiting room ${roomId} with ${peers.length} peer(s)`);
+            return { roomId, roomCode: roomData.roomCode };
+          }
         }
       }
     }
+    
     console.log('[ROOMS] No waiting rooms found, will create new room');
     return null;
   } catch (err) {
@@ -119,6 +132,9 @@ async function leaveRoom(redis, roomId, ghostId) {
     if (peers.length === 0) {
       await redis.del(`room:${roomId}`);
       await redis.del(`roomcode:${roomData.roomCode}`);
+      await redis.srem('waiting_rooms', roomId);
+    } else if (roomData.mode === 'random' && peers.length === 1) {
+      await redis.sadd('waiting_rooms', roomId);
     }
   } catch (err) {
     console.error('[ROOMS] Error leaving room:', err.message);
