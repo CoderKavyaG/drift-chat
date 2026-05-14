@@ -390,6 +390,21 @@ export function useWebRTC(signalingRef) {
   const handleOffer = useCallback(async (fromPeerId, sdp) => {
     console.log('[WebRTC] Received offer from', fromPeerId);
 
+    // CRITICAL FIX: Wait for local stream to be initialized before creating peer connection
+    // If stream is null, the responder won't have any tracks to send, causing asymmetric streaming
+    let attempts = 0;
+    while (!localStreamRef.current && attempts < 100) {
+      console.log('[WebRTC] ⏳ Waiting for local stream before handling offer from', fromPeerId, '(attempt', attempts + 1, ')');
+      await new Promise(r => setTimeout(r, 100));
+      attempts++;
+    }
+
+    if (!localStreamRef.current) {
+      console.warn('[WebRTC] ⚠️ Local stream still not available after 10s, creating peer connection anyway');
+    } else {
+      console.log('[WebRTC] ✓ Local stream ready, now handling offer from', fromPeerId);
+    }
+
     let pc = peerConnectionsRef.current.get(fromPeerId);
     if (!pc) {
       console.log('[WebRTC] Creating peer connection for', fromPeerId, 'to handle offer');
