@@ -67,16 +67,13 @@ export function useWebRTC(signalingRef) {
         });
         
         console.log('[WebRTC] ✅ Added authenticated TURN:', { hostOnly, ports: ['3478', '80', port] });
-      } else if (turnUrl.includes('google')) {
-        // Google public TURN - no auth needed, just add STUN-like
-        // Don't add TURN scheme prefix, pass raw host
-        servers.push({
-          urls: [`turn:${host}`]
-        });
-        console.log('[WebRTC] ✅ Added Google TURN (public, no auth):', host);
       } else {
-        // Unspecified TURN without auth - skip to avoid browser error
-        console.warn('[WebRTC] ⚠️ TURN config incomplete (missing username/credential) - skipping TURN, using STUN only');
+        // ❌ CRITICAL: WebRTC requires username+credential for turn: scheme URLs
+        // There is NO way to add public TURN without credentials - browser will reject it
+        // Solution: Rely on STUN only (6 Google STUN servers already configured)
+        console.warn('[WebRTC] ⚠️ TURN URL provided but NO credentials - cannot use TURN');
+        console.warn('[WebRTC] Browser requires authentication for turn: URLs - it\'s a WebRTC limitation');
+        console.warn('[WebRTC] Using STUN only (should work for same-network/college WiFi calls)');
       }
     }
     
