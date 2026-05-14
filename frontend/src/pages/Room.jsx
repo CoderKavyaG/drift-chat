@@ -58,7 +58,10 @@ export function Room() {
 
   // Callbacks - ALL THIRD (must come before effects that use them)
   const handleNextStranger = useCallback(async () => {
-    webRTC.hangUp();
+    // Use ref so this callback is stable and doesn't cause dep-array churn
+    webRTCRef.current.hangUp();
+    setLocalStreamReady(false);      // reset so video re-initializes in new room
+    streamInitializedRef.current = false; // allow stream re-init for new room
     try {
       const result = await joinRoom('random');
       setRoomId(result.roomId);
@@ -69,15 +72,15 @@ export function Room() {
       console.error('Error joining new room:', err);
       navigate('/');
     }
-  }, [webRTC, navigate]);
+  }, [navigate]); // webRTC removed — accessed via ref which is always current
 
   const handleHangup = useCallback(() => {
-    webRTC.hangUp();
+    webRTCRef.current.hangUp();
     if (roomId && signalingRef.current?.send) {
       signalingRef.current.send({ type: 'leave-room', roomId });
     }
     navigate('/');
-  }, [webRTC, roomId, navigate]);
+  }, [roomId, navigate]); // webRTC removed — accessed via ref
 
   const handleReport = useCallback((reportData) => {
     if (signalingRef.current?.send && reportTarget) {

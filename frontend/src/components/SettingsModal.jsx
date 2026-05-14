@@ -30,13 +30,15 @@ export function SettingsModal({ isOpen, onClose, onCameraChange, onAudioChange, 
   }, [localStream]);
 
   const handleCameraChange = (deviceId) => {
+    if (!deviceId) return; // Ignore the "Select camera..." placeholder option
     setSelectedCamera(deviceId);
-    onCameraChange(deviceId);
+    if (typeof onCameraChange === 'function') onCameraChange(deviceId);
   };
 
   const handleMicChange = (deviceId) => {
+    if (!deviceId) return; // Ignore the "Select microphone..." placeholder option
     setSelectedMicrophone(deviceId);
-    onAudioChange(deviceId);
+    if (typeof onAudioChange === 'function') onAudioChange(deviceId);
   };
 
   if (!isOpen) return null;

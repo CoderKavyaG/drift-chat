@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 
 export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typingPeers, isPermanent, messages = [] }) {
   const [input, setInput] = useState('');
-  const [typingDebounceTimer, setTypingDebounceTimer] = useState(null);
   const [showTyping, setShowTyping] = useState({});
+  // useRef instead of useState for the debounce timer — storing it in state
+  // caused a re-render on every keystroke (setState for the timer ID).
+  const typingDebounceTimerRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -15,28 +17,31 @@ export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typi
   }, [messages]);
 
   useEffect(() => {
-    // Handle typing indicators
+    // Cleanup: clear all per-peer timers when typingPeers changes
+    const timers = [];
     typingPeers.forEach(peerId => {
       setShowTyping(prev => ({ ...prev, [peerId]: true }));
       const timer = setTimeout(() => {
         setShowTyping(prev => ({ ...prev, [peerId]: false }));
       }, 2000);
-      return () => clearTimeout(timer);
+      timers.push(timer);
     });
+    // Return a single cleanup that clears ALL timers created in this effect run.
+    // Previously, `return () => clearTimeout` was inside the forEach callback,
+    // which is a no-op — the cleanup function returned from a forEach iteration
+    // is ignored by React.
+    return () => timers.forEach(t => clearTimeout(t));
   }, [typingPeers]);
 
   const handleInput = (e) => {
     setInput(e.target.value);
-
-    // Debounced typing indicator
-    if (typingDebounceTimer) {
-      clearTimeout(typingDebounceTimer);
+    // Debounced typing indicator — use ref instead of state to avoid re-renders
+    if (typingDebounceTimerRef.current) {
+      clearTimeout(typingDebounceTimerRef.current);
     }
-
-    const timer = setTimeout(() => {
+    typingDebounceTimerRef.current = setTimeout(() => {
       onSendMessage({ type: 'typing' });
-    }, 100);
-    setTypingDebounceTimer(timer);
+    }, 300); // Increased from 100ms — 100ms fires on almost every keystroke
   };
 
   const handleSend = () => {
@@ -46,7 +51,7 @@ export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typi
     }
   };
 
-  const handleKeyPress = (e) => {
+  const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -134,7 +139,7 @@ export function ChatPanel({ visible, onClose, remoteStreams, onSendMessage, typi
             type="text"
             value={input}
             onChange={handleInput}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             placeholder="Say something..."
             className="flex-1 bg-[#1A1A0F] border border-[#F5F0E8]/30 text-[#F5F0E8] placeholder-[#F5F0E8]/50 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#F4600C] focus:border-[#F4600C] transition-all"
           />
