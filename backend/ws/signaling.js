@@ -81,7 +81,7 @@ function initSignaling(server, redis) {
       connections.delete(ghostId);
       console.log(`[WS] Active connections after disconnect: ${connections.size}`);
 
-      // BUG FIX 8: Properly broadcast peer-left to all peers in all rooms this ghost was in
+      // BUG FIX 8 & 9: Properly broadcast peer-left to all peers in all rooms and clean up Redis
       roomMembers.forEach((members, roomId) => {
         if (members.has(ghostId)) {
           members.delete(ghostId);
@@ -99,9 +99,28 @@ function initSignaling(server, redis) {
             }
           });
 
+          // BUG FIX 9: Clean up Redis too
+          redis.hgetall(`room:${roomId}`).then(roomData => {
+            if (roomData && roomData.peers) {
+              let peers = JSON.parse(roomData.peers || '[]');
+              peers = peers.filter(p => p !== ghostId);
+              redis.hset(`room:${roomId}`, 'peers', JSON.stringify(peers)).catch(err => {
+                console.error('[WS] Error updating Redis on disconnect:', err.message);
+              });
+            }
+          }).catch(err => {
+            console.error('[WS] Error querying room in Redis:', err.message);
+          });
+
           // Clean up empty rooms
           if (members.size === 0) {
             roomMembers.delete(roomId);
+            redis.del(`room:${roomId}`).catch(err => {
+              console.error('[WS] Error deleting room from Redis:', err.message);
+            });
+            redis.srem('waiting_rooms', roomId).catch(err => {
+              console.error('[WS] Error removing from waiting_rooms:', err.message);
+            });
             console.log(`[WS] Deleted empty room ${roomId}`);
           }
         }
@@ -169,15 +188,45 @@ function initSignaling(server, redis) {
 
     console.log(`[WS] handleJoinRoom: ${ghostName} (${ghostId}) joining room ${roomId}`);
 
+    // BUG FIX 9: Load room peers from Redis (REST API integration)
+    // Check if room exists in Redis (was created via REST API)
+    let redisPeers = [];
+    try {
+      const roomData = await redis.hgetall(`room:${roomId}`);
+      if (roomData && roomData.peers) {
+        redisPeers = JSON.parse(roomData.peers || '[]');
+        console.log(`[WS] ✓ Loaded room from Redis with peers: ${redisPeers.join(', ')}`);
+      }
+    } catch (err) {
+      console.error('[WS] Error loading room from Redis:', err.message);
+    }
+
     // Initialize room members set if needed
     if (!roomMembers.has(roomId)) {
       console.log(`[WS] Creating new room set for ${roomId}`);
       roomMembers.set(roomId, new Set());
+      
+      // BUG FIX 9: Add Redis peers to in-memory tracking
+      redisPeers.forEach(peerId => {
+        roomMembers.get(roomId).add(peerId);
+      });
     }
 
     const room = roomMembers.get(roomId);
     const wasEmpty = room.size === 0;
+    
+    // Add current peer to room
     room.add(ghostId);
+    
+    // BUG FIX 9: Also update Redis with current peer
+    redisPeers.push(ghostId);
+    try {
+      await redis.hset(`room:${roomId}`, 'peers', JSON.stringify(Array.from(new Set(redisPeers))));
+      console.log(`[WS] ✓ Updated Redis peers for room ${roomId}`);
+    } catch (err) {
+      console.error('[WS] Error updating Redis peers:', err.message);
+    }
+
     console.log(`[WS] Room ${roomId} now has ${room.size} members: ${Array.from(room).join(', ')}`);
 
     // Send current peers to joining client
@@ -231,6 +280,19 @@ function initSignaling(server, redis) {
     const room = roomMembers.get(roomId);
     room.delete(ghostId);
 
+    // BUG FIX 9: Also update Redis when peer leaves
+    try {
+      const roomData = await redis.hgetall(`room:${roomId}`);
+      if (roomData && roomData.peers) {
+        let peers = JSON.parse(roomData.peers || '[]');
+        peers = peers.filter(p => p !== ghostId);
+        await redis.hset(`room:${roomId}`, 'peers', JSON.stringify(peers));
+        console.log(`[WS] ✓ Updated Redis after peer left: ${ghostId}`);
+      }
+    } catch (err) {
+      console.error('[WS] Error updating Redis on leave:', err.message);
+    }
+
     // Broadcast to remaining peers
     room.forEach(peerId => {
       const peerWs = connections.get(peerId);
@@ -244,6 +306,14 @@ function initSignaling(server, redis) {
 
     if (room.size === 0) {
       roomMembers.delete(roomId);
+      // BUG FIX 9: Mark room as deleted in Redis too
+      try {
+        await redis.del(`room:${roomId}`);
+        await redis.srem('waiting_rooms', roomId);
+        console.log(`[WS] ✓ Cleaned up empty room in Redis: ${roomId}`);
+      } catch (err) {
+        console.error('[WS] Error cleaning up room in Redis:', err.message);
+      }
     }
   }
 
