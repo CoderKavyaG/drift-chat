@@ -207,6 +207,7 @@ export function Room() {
   }, [signalingsSend]);
 
   // Effects - ALL FOURTH
+  // CRITICAL: Initialize stream FIRST before any other operations
   useEffect(() => {
     // Guard MUST be synchronous and checked FIRST
     if (streamInitializedRef.current) {
@@ -218,31 +219,29 @@ export function Room() {
     streamInitializedRef.current = 'initializing';
     
     const initStream = async () => {
-      console.log('[Room] Initializing local stream BEFORE room join');
+      console.log('[Room] 🔴 PRIORITY 1: Initializing local stream BEFORE room join');
       try {
         const stream = await webRTC.initializeLocalStream();
         if (!stream) {
-          console.warn('[Room] Camera/microphone access denied - continuing without media stream (development mode)');
-          streamInitializedRef.current = true; // Mark as initialized even if no stream
-          // Continue without stream for development/testing
+          console.warn('[Room] ⚠️ Camera/microphone access denied - continuing in dev mode');
+          streamInitializedRef.current = true;
         } else {
           if (waitingVideoRef.current && peers.length === 0) {
             waitingVideoRef.current.srcObject = stream;
           }
-          streamInitializedRef.current = true; // Mark as initialized
-          console.log('[Room] Local stream initialization complete');
+          streamInitializedRef.current = true;
+          console.log('[Room] ✅ Local stream ready:', stream.getTracks().map(t => t.kind).join(', '));
         }
       } catch (err) {
-        console.error('[Room] Stream initialization error:', err);
-        console.warn('[Room] Continuing without media stream (development mode)');
-        streamInitializedRef.current = true; // Mark as initialized even if error
+        console.error('[Room] ❌ Stream initialization error:', err);
+        streamInitializedRef.current = true;
       }
     };
     
     if (isLoaded) {
       initStream();
     }
-  }, [isLoaded, navigate, webRTC]);
+  }, [isLoaded, webRTC]);
 
   useEffect(() => {
     const joinRoomFn = async () => {
@@ -272,30 +271,39 @@ export function Room() {
   useEffect(() => {
     console.log('[Room] Join-room effect check:', {
       roomId: roomId ? roomId.substring(0, 8) : 'NO',
+      streamReady: streamInitializedRef.current === true,
+      localStreamExists: webRTC.localStreamRef.current ? 'YES' : 'NO',
       signalingsSend: signalingsSend ? 'YES' : 'NO',
       connectionState,
       alreadySent: joinRoomSentRef.current,
-      shouldSend: roomId && signalingsSend && connectionState === 'connected' && !joinRoomSentRef.current
+      shouldSend: roomId && streamInitializedRef.current === true && signalingsSend && connectionState === 'connected' && !joinRoomSentRef.current
     });
     
-    // IMMEDIATELY send join-room when conditions are met, no delay
+    // CRITICAL: Wait for stream to be initialized before sending join-room
+    if (!streamInitializedRef.current === true) {
+      console.log('[Room] ⏳ Waiting for stream initialization...');
+      return;
+    }
+
+    // Only send join-room when ALL conditions are met
     if (roomId && signalingsSend && connectionState === 'connected' && !joinRoomSentRef.current) {
-      console.log('[Room] ✓ SENDING join-room message for roomId:', roomId);
-      joinRoomSentRef.current = true; // Mark as sent immediately to prevent duplicate sends
+      console.log('[Room] 🟢 PRIORITY 2: Sending join-room (stream ready + WebSocket connected)');
+      console.log('[Room] Local stream tracks:', webRTC.localStreamRef.current?.getTracks().length || 0);
       
-      // Send immediately without delay
+      joinRoomSentRef.current = true;
       signalingsSend({
         type: 'join-room',
         roomId
       });
-      console.log('[Room] join-room message sent');
+      console.log('[Room] ✅ join-room message sent');
     } else {
       if (!roomId) console.log('[Room] ✗ No roomId yet');
+      if (streamInitializedRef.current !== true) console.log('[Room] ✗ Stream not ready');
       if (!signalingsSend) console.log('[Room] ✗ signalingsSend not ready');
       if (connectionState !== 'connected') console.log('[Room] ✗ connectionState not connected:', connectionState);
       if (joinRoomSentRef.current) console.log('[Room] ✗ join-room already sent');
     }
-  }, [roomId, signalingsSend, connectionState]);
+  }, [roomId, signalingsSend, connectionState, webRTC]);
 
   useEffect(() => {
     if (roomModeRef.current === 'random' && peers.length === 0 && nextStrangerCountdown === null) {

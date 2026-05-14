@@ -17,8 +17,10 @@ export function useWebRTC(signalingRef) {
   const isNegotiatingRef = useRef({});
 
   // Get ICE servers from environment or defaults
+  // Critical: Support multiple TURN servers and transports for college WiFi compatibility
   const getIceServers = useCallback(() => {
     const servers = [
+      // Primary STUN servers (Google)
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       { urls: 'stun:stun2.l.google.com:19302' },
@@ -29,26 +31,49 @@ export function useWebRTC(signalingRef) {
     // Add custom STUN if provided
     if (import.meta.env.VITE_STUN_URL) {
       servers.unshift({ urls: import.meta.env.VITE_STUN_URL });
+      console.log('[WebRTC] Added custom STUN:', import.meta.env.VITE_STUN_URL);
     }
     
-    // Add TURN server with proper format
+    // CRITICAL: Add TURN servers with multiple transports for college WiFi
     if (import.meta.env.VITE_TURN_URL) {
       const turnUrl = import.meta.env.VITE_TURN_URL;
       const username = import.meta.env.VITE_TURN_USERNAME;
       const credential = import.meta.env.VITE_TURN_CREDENTIAL;
       
       if (username && credential) {
-        // Format: turn:host:port or turn:host:port?transport=tcp
+        // Parse URL to extract host:port
+        let host = turnUrl;
+        if (turnUrl.startsWith('turn:')) {
+          host = turnUrl.substring(5);
+        } else if (turnUrl.startsWith('turns:')) {
+          host = turnUrl.substring(6);
+        }
+        
+        // Format URLs for multiple transports
+        // College WiFi typically blocks UDP, so TCP is essential
         servers.push({
-          urls: [turnUrl, `${turnUrl}?transport=tcp`],
+          urls: [
+            `turn:${host}?transport=udp`,
+            `turn:${host}?transport=tcp`,
+            `turns:${host}?transport=tcp`  // TLS over TCP (port 443)
+          ],
           username,
           credential
         });
-        console.log('[WebRTC] Added TURN server:', turnUrl);
+        
+        console.log('[WebRTC] Added TURN servers:', {
+          urls: [`turn:${host} (udp/tcp)`, `turns:${host} (tcp)`],
+          username
+        });
       }
     }
     
-    console.log('[WebRTC] ICE servers configured:', servers.length, 'servers');
+    console.log('[WebRTC] ICE server config:', {
+      totalServers: servers.length,
+      stun: servers.filter(s => s.urls.includes('stun')).length,
+      turn: servers.filter(s => s.username).length
+    });
+    
     return servers;
   }, []);
 
@@ -89,7 +114,14 @@ export function useWebRTC(signalingRef) {
     // SET ALL EVENT HANDLERS IMMEDIATELY (before addTrack or createOffer)
     // BUG FIX 5: ontrack with proper setRemoteStreams update
     pc.ontrack = (event) => {
-      console.log('[WebRTC] ontrack fired for', peerId, ':', event.track.kind);
+      console.log('[WebRTC] 🟢 ontrack fired for', peerId, ':', event.track.kind);
+      console.log('[WebRTC] Track details:', {
+        kind: event.track.kind,
+        enabled: event.track.enabled,
+        readyState: event.track.readyState,
+        label: event.track.label,
+        streamCount: event.streams.length
+      });
 
       const stream = event.streams[0];
       if (!stream) {
@@ -100,11 +132,12 @@ export function useWebRTC(signalingRef) {
           next.set(peerId, newStream);
           return next;
         });
+        console.log('[WebRTC] ✅ Created new MediaStream for', peerId);
         return;
       }
 
       event.track.enabled = true;
-      console.log('[WebRTC] Setting remote stream for', peerId, 'with', event.track.kind);
+      console.log('[WebRTC] ✅ Setting remote stream for', peerId, 'with', event.track.kind, '- stream has', stream.getTracks().length, 'total tracks');
 
       setRemoteStreams(prev => {
         const next = new Map(prev);
@@ -112,6 +145,7 @@ export function useWebRTC(signalingRef) {
         if (existing && existing !== stream) {
           if (!existing.getTracks().find(t => t.kind === event.track.kind)) {
             existing.addTrack(event.track);
+            console.log('[WebRTC] Added track to existing stream for', peerId);
           }
           next.set(peerId, existing);
         } else {
@@ -232,13 +266,21 @@ export function useWebRTC(signalingRef) {
 
     // BUG FIX 1: Add local tracks BEFORE createOffer is ever called
     if (localStreamRef.current) {
-      console.log('[WebRTC] Adding local tracks to peer connection for', peerId);
-      localStreamRef.current.getTracks().forEach(track => {
+      const tracks = localStreamRef.current.getTracks();
+      console.log('[WebRTC] 🟢 Adding', tracks.length, 'local tracks to peer connection for', peerId);
+      tracks.forEach((track, idx) => {
         pc.addTrack(track, localStreamRef.current);
-        console.log('[WebRTC] Added local track:', { peerId, kind: track.kind, enabled: track.enabled });
+        console.log(`[WebRTC] ✅ Track ${idx + 1}/${tracks.length} added:`, { 
+          peerId, 
+          kind: track.kind, 
+          enabled: track.enabled,
+          label: track.label 
+        });
       });
+      console.log('[WebRTC] ✓ All local tracks added successfully for', peerId);
     } else {
-      console.warn('[WebRTC] Local stream not available when creating peer connection for', peerId);
+      console.error('[WebRTC] ❌ CRITICAL: Local stream is NULL when creating peer connection for', peerId);
+      console.error('[WebRTC] This will cause asymmetric streaming - tracks will not be sent to remote peer!');
     }
 
     // Store peer connection BEFORE onnegotiationneeded fires
@@ -248,9 +290,10 @@ export function useWebRTC(signalingRef) {
     // BUG FIX: If initiator but no tracks (dev mode), manually create offer
     // onnegotiationneeded won't fire without tracks, so we need to trigger manually
     if (isInitiator && !localStreamRef.current) {
-      console.log('[WebRTC] Initiator with no local stream - manually creating offer for', peerId);
+      console.log('[WebRTC] Initiator with no local stream - scheduling manual offer for', peerId);
       
-      // Small delay to let peer connections initialize
+      // Increase delay from 50ms to 500ms to give peer connection time to settle
+      // and account for potential network delays
       setTimeout(async () => {
         try {
           if (pc.signalingState !== 'stable') {
@@ -258,11 +301,11 @@ export function useWebRTC(signalingRef) {
             return;
           }
 
-          console.log('[WebRTC] Creating offer for', peerId);
+          console.log('[WebRTC] Creating manual offer for', peerId);
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
           
-          console.log('[WebRTC] Sending offer for', peerId);
+          console.log('[WebRTC] Sending manual offer for', peerId);
           if (signalingRef?.current?.send) {
             signalingRef.current.send({
               type: 'offer',
@@ -273,7 +316,7 @@ export function useWebRTC(signalingRef) {
         } catch (err) {
           console.error('[WebRTC] Error creating manual offer for', peerId, ':', err.message);
         }
-      }, 50);
+      }, 500);  // Increased from 50ms to 500ms
     }
 
     return pc;
