@@ -11,7 +11,7 @@ import { ActivePeersBar } from '../components/ActivePeersBar';
 import { ConnectionStatus } from '../components/ConnectionStatus';
 import { SettingsModal } from '../components/SettingsModal';
 import { ReportModal } from '../components/ReportModal';
-import { GhostIdentityBadge } from '../components/GhostIdentityBadge';
+
 
 const AVATAR_COLORS = [
   '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
