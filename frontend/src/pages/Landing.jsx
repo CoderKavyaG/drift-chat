@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LandingPage from '../components/LandingPage';
 import { joinRoom } from '../lib/api';
-import { GhostIdentityBadge } from '../components/GhostIdentityBadge';
+
 
 export function Landing() {
   const navigate = useNavigate();
@@ -39,7 +39,6 @@ export function Landing() {
 
   return (
     <div className="relative w-full">
-      <GhostIdentityBadge />
       
       {/* Landing page component with button handlers */}
       <LandingPage 
